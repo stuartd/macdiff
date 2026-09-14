@@ -11,6 +11,7 @@ let package = Package(
     targets: [
         .target(name: "DiffCore"),
         .executableTarget(name: "MacDiff", dependencies: ["DiffCore"]),
-        .testTarget(name: "DiffCoreTests", dependencies: ["DiffCore"])
+        .testTarget(name: "DiffCoreTests", dependencies: ["DiffCore"]),
+        .testTarget(name: "MacDiffTests", dependencies: ["MacDiff"])
     ]
 )

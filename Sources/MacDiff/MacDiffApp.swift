@@ -3,16 +3,26 @@ import SwiftUI
 
 @main
 struct MacDiffApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     var body: some Scene {
-        WindowGroup {
+        Window("MacDiff", id: "comparison") {
             ContentView()
-                .frame(minWidth: 900, minHeight: 560)
-                .preferredColorScheme(.dark)
+                .frame(minWidth: 960, minHeight: 600)
         }
-        .windowStyle(.hiddenTitleBar)
-        .commands {
-            CommandGroup(replacing: .newItem) { }
-        }
+        .defaultSize(width: 1200, height: 760)
+    }
+}
+
+@MainActor
+private final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }
 #else

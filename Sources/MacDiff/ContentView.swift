@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 import DiffCore
 
 struct ContentView: View {
-    @StateObject private var document = DiffDocument()
+    @ObservedObject var document: DiffDocument
     @State private var choosingLeft = true
     @State private var showingImporter = false
     @State private var editingLeft = true
@@ -61,6 +61,10 @@ struct ContentView: View {
         HStack(spacing: 14) {
             Label("MacDiff", systemImage: "square.split.2x1")
                 .font(.headline)
+            Button { document.clear() } label: {
+                Label("New", systemImage: "doc.badge.plus")
+            }
+            .help("Start a new comparison by clearing both inputs (⌘N)")
             Spacer()
             Button { document.moveChange(-1) } label: {
                 Label("Previous change", systemImage: "chevron.up")
@@ -105,11 +109,6 @@ struct ContentView: View {
             }
             .keyboardShortcut("s", modifiers: [.command, .option])
             .disabled(!document.hasLeft && !document.hasRight)
-            Button { document.clear() } label: {
-                Label("Clear", systemImage: "trash")
-            }
-            .help("Clear both inputs")
-            .disabled(!document.hasLeft && !document.hasRight && !document.isLoadingLeft && !document.isLoadingRight)
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 18)
@@ -124,31 +123,42 @@ struct ContentView: View {
         let title = onLeft ? "Original" : "Changed"
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(title.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                Text(url?.lastPathComponent ?? (hasInput ? "Text snippet" : "No input"))
+                Text(url?.lastPathComponent ?? (hasInput ? "" : "No input"))
                     .font(.caption).lineLimit(1).truncationMode(.middle)
                     .help(url?.path ?? title)
-                Spacer(minLength: 0)
-                if isLoading {
-                    ProgressView().controlSize(.small).accessibilityLabel("Loading \(title.lowercased())")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Text(title.uppercased())
+                    .font(.subheadline.weight(.semibold))
+                    .fixedSize()
+                HStack {
+                    Spacer(minLength: 0)
+                    if isLoading {
+                        ProgressView().controlSize(.small).accessibilityLabel("Loading \(title.lowercased())")
+                    }
                 }
+                .frame(maxWidth: .infinity)
             }
-            HStack(spacing: 14) {
-                Button { paste(onLeft: onLeft) } label: { Label("Paste", systemImage: "doc.on.clipboard") }
-                    .keyboardShortcut("v", modifiers: onLeft ? [.command, .shift] : [.command, .option])
-                    .help(onLeft ? "Paste original (⇧⌘V)" : "Paste changed (⌥⌘V)")
-                Button { open(onLeft: onLeft) } label: { Label("Open", systemImage: "folder") }
-                    .keyboardShortcut("o", modifiers: onLeft ? .command : [.command, .shift])
-                    .help("Open a text file, or drop one onto this header")
-                Button { edit(onLeft: onLeft) } label: { Label("Edit", systemImage: "square.and.pencil") }
-                    .help("Type or edit \(title.lowercased()) text")
-                Spacer(minLength: 0)
-                Button { copy(onLeft: onLeft) } label: { Label("Copy \(title.lowercased()) text", systemImage: "doc.on.doc") }
-                    .labelStyle(.iconOnly).disabled(!hasInput)
-                    .help("Copy the complete \(title.lowercased()) text")
-                Button { document.clear(onLeft: onLeft) } label: { Label("Clear \(title.lowercased())", systemImage: "xmark.circle") }
-                    .labelStyle(.iconOnly).disabled(!hasInput && !isLoading)
-                    .help("Clear \(title.lowercased()) input")
+            ZStack {
+                HStack(spacing: 14) {
+                    Button { paste(onLeft: onLeft) } label: { Label("Paste", systemImage: "doc.on.clipboard") }
+                        .keyboardShortcut("v", modifiers: onLeft ? [.command, .shift] : [.command, .option])
+                        .help(onLeft ? "Paste original (⇧⌘V)" : "Paste changed (⌥⌘V)")
+                    Button { open(onLeft: onLeft) } label: { Label("Open", systemImage: "folder") }
+                        .keyboardShortcut("o", modifiers: onLeft ? .command : [.command, .shift])
+                        .help("Open a text file, or drop one onto this header")
+                    Button { edit(onLeft: onLeft) } label: { Label("Edit", systemImage: "square.and.pencil") }
+                        .help("Type or edit \(title.lowercased()) text")
+                }
+                .frame(maxWidth: .infinity)
+                HStack(spacing: 14) {
+                    Button { copy(onLeft: onLeft) } label: { Label("Copy \(title.lowercased()) text", systemImage: "doc.on.doc") }
+                        .labelStyle(.iconOnly).disabled(!hasInput)
+                        .help("Copy the complete \(title.lowercased()) text")
+                    Button { document.clear(onLeft: onLeft) } label: { Label("Clear \(title.lowercased())", systemImage: "xmark.circle") }
+                        .labelStyle(.iconOnly).disabled(!hasInput && !isLoading)
+                        .help("Clear \(title.lowercased()) input")
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
             .buttonStyle(.borderless)
             .font(.callout)
@@ -199,9 +209,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .topLeading)
                 Button("Edit text…") { edit(onLeft: onLeft) }
             } else {
-                Text("Paste a snippet, type text, or open a text file.")
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, minHeight: 110, alignment: .topLeading)
+                Color.clear
+                    .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110)
+                    .accessibilityHidden(true)
                 Button("Paste \(onLeft ? "Original" : "Changed")") { paste(onLeft: onLeft) }
                     .buttonStyle(.borderedProminent)
             }

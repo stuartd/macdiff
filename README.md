@@ -41,7 +41,7 @@ Use `--` before paths beginning with a hyphen. `--help` prints usage.
 - **Open** a file on each side, or drop one file onto each header.
 - **Paste** text into either side, or use **Edit** to enter a snippet. An explicitly empty input can be compared too.
 - **Copy** copies the complete source text, without line numbers or display formatting.
-- **Swap** reverses the two inputs; **Clear** starts again.
+- **Swap** reverses the two inputs; **New** in the toolbar or **File → New** clears both inputs and starts a fresh comparison.
 - Previous/next navigation jumps between groups of changed lines. The current group’s first line has an accent outline.
 - **Ignore spacing** trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
 - **Appearance** offers system, light, and dark modes, plus adjustable text size. Colours are subdued, and additions/removals also have `+`/`−` markers.
@@ -52,6 +52,7 @@ The panes scroll together and each occupy half the window. Long lines wrap, with
 
 | Action | Shortcut |
 | --- | --- |
+| New comparison | ⌘N |
 | Open original / changed | ⌘O / ⇧⌘O |
 | Paste original / changed | ⇧⌘V / ⌥⌘V |
 | Previous / next change | ⌘[ / ⌘] |

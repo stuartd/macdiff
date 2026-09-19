@@ -4,13 +4,20 @@ import SwiftUI
 @main
 struct MacDiffApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var document = DiffDocument()
 
     var body: some Scene {
         Window("MacDiff", id: "comparison") {
-            ContentView()
+            ContentView(document: document)
                 .frame(minWidth: 960, minHeight: 600)
         }
         .defaultSize(width: 1200, height: 760)
+        .commands {
+            CommandGroup(replacing: .newItem) {
+                Button("New") { document.clear() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
+        }
     }
 }
 

@@ -20,6 +20,8 @@ open dist/MacDiff.app
 
 The script builds a release app for the current Mac’s architecture and signs it for local use. Pass `debug` for a debug build. The bundle is intended for local development; it is not notarized for distribution.
 
+After building, run `./scripts/move.sh` to move `dist/MacDiff.app` into `~/MyApplications/MacDiff.app`, replacing the previous copy. This does not build the app. Close running MacDiff windows before starting another comparison so the new version is used.
+
 The build converts `icon/icon.png` into the macOS app icon, including standard and Retina sizes. To update the icon, replace that square PNG (at least 1024 × 1024 pixels) and rebuild the app bundle.
 
 ## Use with ClipDiff

@@ -8,9 +8,8 @@ struct ContentView: View {
     @ObservedObject var document: DiffDocument
     @State private var choosingLeft = true
     @State private var showingImporter = false
-    @State private var editingLeft = true
-    @State private var showingEditor = false
-    @State private var draftText = ""
+    @State private var importDirectory = URL.documentsDirectory
+    @State private var editorInput: EditorInput?
     @State private var loadedLaunchInputs = false
     @AppStorage("diffFontSize") private var fontSize = 13.0
     @AppStorage("appearance") private var appearance = "system"
@@ -39,13 +38,16 @@ struct ContentView: View {
         .task { loadLaunchInputs() }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.data]) { result in
             switch result {
-            case let .success(url): document.load(url, onLeft: choosingLeft)
+            case let .success(url):
+                importDirectory = url.deletingLastPathComponent()
+                document.load(url, onLeft: choosingLeft)
             case let .failure(error):
                 if (error as NSError).code != NSUserCancelledError {
                     document.errorMessage = error.localizedDescription
                 }
             }
         }
+        .fileDialogDefaultDirectory(importDirectory)
         .alert("Unable to use this input", isPresented: Binding(
             get: { document.errorMessage != nil },
             set: { if !$0 { document.errorMessage = nil } }
@@ -54,7 +56,11 @@ struct ContentView: View {
         } message: {
             Text(document.errorMessage ?? "")
         }
-        .sheet(isPresented: $showingEditor) { textEditor }
+        .sheet(item: $editorInput) { input in
+            TextInputEditor(input: input) { text in
+                document.setText(text, onLeft: input.onLeft)
+            }
+        }
     }
 
     private var toolbar: some View {
@@ -277,28 +283,6 @@ struct ContentView: View {
         return "Change \((document.selectedChange ?? 0) + 1) of \(document.changeStarts.count)"
     }
 
-    private var textEditor: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("\(editingLeft ? "Original" : "Changed") text").font(.title2.weight(.semibold))
-            Text("Paste or type plain text. You can also compare an empty input.").foregroundStyle(.secondary)
-            TextEditor(text: $draftText)
-                .font(.system(size: 13, design: .monospaced))
-                .autocorrectionDisabled()
-                .border(.quaternary)
-                .accessibilityLabel("\(editingLeft ? "Original" : "Changed") text editor")
-            HStack {
-                Spacer()
-                Button("Cancel", role: .cancel) { showingEditor = false }.keyboardShortcut(.cancelAction)
-                Button("Use Text") {
-                    document.setText(draftText, onLeft: editingLeft)
-                    showingEditor = false
-                }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24)
-        .frame(width: 720, height: 480)
-    }
-
     private func loadLaunchInputs() {
         guard !loadedLaunchInputs else { return }
         loadedLaunchInputs = true
@@ -324,9 +308,7 @@ struct ContentView: View {
     }
 
     private func edit(onLeft: Bool) {
-        editingLeft = onLeft
-        draftText = onLeft ? document.leftText : document.rightText
-        showingEditor = true
+        editorInput = EditorInput(onLeft: onLeft, text: onLeft ? document.leftText : document.rightText)
     }
 
     private func paste(onLeft: Bool) {
@@ -341,6 +323,48 @@ struct ContentView: View {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(onLeft ? document.leftText : document.rightText, forType: .string)
     }
+}
+
+private struct EditorInput: Identifiable {
+    let id = UUID()
+    let onLeft: Bool
+    let text: String
+}
+
+private struct TextInputEditor: View {
+    let input: EditorInput
+    let onSave: (String) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var draftText: String
+
+    init(input: EditorInput, onSave: @escaping (String) -> Void) {
+        self.input = input
+        self.onSave = onSave
+        _draftText = State(initialValue: input.text)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("\(input.onLeft ? "Original" : "Changed") text").font(.title2.weight(.semibold))
+            Text("Paste or type plain text. You can also compare an empty input.").foregroundStyle(.secondary)
+            TextEditor(text: $draftText)
+                .font(.system(size: 13, design: .monospaced))
+                .autocorrectionDisabled()
+                .border(.quaternary)
+                .accessibilityLabel("\(input.onLeft ? "Original" : "Changed") text editor")
+            HStack {
+                Spacer()
+                Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Use Text") {
+                    onSave(draftText)
+                    dismiss()
+                }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 720, height: 480)
+    }
+
 }
 
 private struct DiffRowView: View {

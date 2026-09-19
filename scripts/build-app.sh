@@ -38,6 +38,17 @@ cp "$project_root/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 chmod +x "$staged_app/Contents/MacOS/MacDiff"
 /usr/bin/plutil -lint "$staged_app/Contents/Info.plist"
 
+# Generate standard and Retina icon sizes from the source artwork.
+icon_source="$project_root/icon/icon.png"
+iconset="$staging_dir/AppIcon.iconset"
+mkdir -p "$iconset"
+for size in 16 32 128 256 512; do
+    /usr/bin/sips -z "$size" "$size" "$icon_source" --out "$iconset/icon_${size}x${size}.png" >/dev/null
+    retina_size=$((size * 2))
+    /usr/bin/sips -z "$retina_size" "$retina_size" "$icon_source" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
+done
+/usr/bin/iconutil --convert icns "$iconset" --output "$staged_app/Contents/Resources/AppIcon.icns"
+
 # This development signature supports local use; it does not notarize the app.
 /usr/bin/codesign --force --sign - --timestamp=none "$staged_app"
 /usr/bin/codesign --verify --strict "$staged_app"

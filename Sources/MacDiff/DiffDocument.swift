@@ -102,6 +102,12 @@ final class DiffDocument: ObservableObject {
         if onLeft { leftLoadTask = task } else { rightLoadTask = task }
     }
 
+    func replaceComparison(original: URL, changed: URL) {
+        clear()
+        load(original, onLeft: true)
+        load(changed, onLeft: false)
+    }
+
     func swap() {
         cancelLoad(onLeft: true)
         cancelLoad(onLeft: false)

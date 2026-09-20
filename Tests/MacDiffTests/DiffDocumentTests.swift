@@ -187,4 +187,23 @@ private func waitForDocument(_ document: DiffDocument) async throws {
     #expect(document.leftText == "previous input")
     #expect(document.errorMessage?.contains("100,000 display columns") == true)
 }
+@Test @MainActor func latestComparisonReplacesBothSidesAndCancelsOldReads() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let urls = (0..<4).map { directory.appendingPathComponent("input\($0).txt") }
+    for (index, url) in urls.enumerated() {
+        try "comparison \(index)".write(to: url, atomically: true, encoding: .utf8)
+    }
+    let document = DiffDocument()
+    document.replaceComparison(original: urls[0], changed: urls[1])
+    document.replaceComparison(original: urls[2], changed: urls[3])
+    try await waitForDocument(document)
+    #expect(document.leftText == "comparison 2")
+    #expect(document.rightText == "comparison 3")
+    #expect(document.leftURL == urls[2])
+    #expect(document.rightURL == urls[3])
+    #expect(document.modifiedCount == 1)
+    #expect(document.errorMessage == nil)
+}
 #endif

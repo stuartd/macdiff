@@ -28,7 +28,15 @@ The build converts `icon/icon.png` into the macOS app icon, including standard a
 
 In ClipDiff, choose **Diff viewer → Choose Application…** and select `dist/MacDiff.app` (or its `Contents/MacOS/MacDiff` executable).
 
-MacDiff accepts the original and changed paths as two separate positional arguments, matching ClipDiff’s custom-viewer launch contract. Each invocation opens its own comparison. Closing the window exits that process, allowing ClipDiff to clean up its temporary files. ClipDiff handles capturing the clipboard and supplying the two text files.
+ClipDiff sends the original and changed files to MacDiff through macOS. Each comparison replaces the contents of the existing window and brings it to the front; MacDiff launches only if needed. Closing the window exits MacDiff and allows ClipDiff to clean up its temporary comparison files. Update both apps to use this handoff.
+
+To reuse the same window from the command line:
+
+```sh
+open -a "$HOME/MyApplications/MacDiff.app" "/path/to/original.txt" "/path/to/changed.txt"
+```
+
+Direct executable launches still accept two positional paths.
 
 You can also launch a new instance yourself:
 

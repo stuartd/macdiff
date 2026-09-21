@@ -141,7 +141,7 @@ struct ContentView: View {
             .font(.system(size: 16, weight: .medium))
             .lineLimit(1)
             .truncationMode(.middle)
-            .help(url?.path ?? title)
+            .help(url.map { FilePathLabel.clipboardTitle(for: $0) ?? $0.path } ?? title)
             .frame(maxWidth: .infinity, alignment: onLeft ? .leading : .trailing)
         let loadingIndicator = HStack {
             if onLeft { Spacer(minLength: 0) }

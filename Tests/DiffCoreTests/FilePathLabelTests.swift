@@ -22,3 +22,16 @@ func fileLabelsDistinguishPaths(paths: (String, String, String, String)) {
 @Test func singleFileLabelUsesFilename() {
     #expect(FilePathLabel.title(for: URL(fileURLWithPath: "/dir/index.html"), comparedWith: nil) == "index.html")
 }
+
+@Test func clipDiffClipboardLabelsHideTransportFilenames() {
+    let workspace = FileManager.default.temporaryDirectory
+        .appendingPathComponent("ClipDiff/External Comparisons/\(UUID().uuidString)")
+    for side in ["Previous", "Current"] {
+        let url = workspace.appendingPathComponent("\(side) clipboard.txt")
+        #expect(FilePathLabel.title(for: url, comparedWith: nil) == "\(side) clipboard")
+        let realFile = workspace.appendingPathComponent("\(side)/\(side) clipboard.txt")
+        #expect(FilePathLabel.title(for: realFile, comparedWith: nil) == "\(side) clipboard.txt")
+    }
+    let ordinaryFile = URL(fileURLWithPath: "/documents/Current clipboard.txt")
+    #expect(FilePathLabel.title(for: ordinaryFile, comparedWith: nil) == "Current clipboard.txt")
+}

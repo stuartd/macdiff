@@ -48,7 +48,7 @@ Use `--` before paths beginning with a hyphen. `--help` prints usage.
 
 ## Comparing text
 
-- **Open** a file on each side, or drop one file onto each header.
+- **Open** a file on each side, or drop one file onto each text pane or header. Dropping onto a pane loads that side, including before a comparison starts and in the blank space below short files.
 - **Paste** text into either side, or use **Edit** to enter a snippet. An explicitly empty input can be compared too.
 - **Copy** copies the complete source text, without line numbers or display formatting.
 - **Swap** reverses the two inputs; **New** in the toolbar or **File → New** clears both inputs and starts a fresh comparison.
@@ -57,6 +57,8 @@ Use `--` before paths beginning with a hyphen. `--help` prints usage.
 - **Appearance** offers system, light, and dark modes, plus adjustable text size. Colours are subdued, and additions/removals also have `+`/`−` markers.
 
 The panes scroll together and each occupy half the window. Long lines wrap, with both sides of each row kept at the same height so matching lines remain aligned. Tabs display as four spaces; copying preserves the original tabs.
+
+When both files have the same name, the headers include enough parent folders to distinguish their paths. Hover over either label to see the full path.
 
 ### Shortcuts
 

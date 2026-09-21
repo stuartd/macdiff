@@ -25,10 +25,19 @@ struct ContentView: View {
             }
             .frame(height: 74)
             Divider()
-            if document.hasBothInputs {
-                diffView
-            } else {
-                welcome
+            GeometryReader { geometry in
+                Group {
+                    if document.hasBothInputs {
+                        diffView
+                    } else {
+                        welcome
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .dropDestination(for: URL.self) { urls, location in
+                    loadDroppedFile(urls, onLeft: location.x < geometry.size.width / 2)
+                }
             }
             Divider()
             statusBar
@@ -127,22 +136,28 @@ struct ContentView: View {
         let hasInput = onLeft ? document.hasLeft : document.hasRight
         let isLoading = onLeft ? document.isLoadingLeft : document.isLoadingRight
         let title = onLeft ? "Original" : "Changed"
+        let otherURL = onLeft ? document.rightURL : document.leftURL
+        let filename = Text(url.map { FilePathLabel.title(for: $0, comparedWith: otherURL) } ?? (hasInput ? "" : "No input"))
+            .font(.system(size: 16, weight: .medium))
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(url?.path ?? title)
+            .frame(maxWidth: .infinity, alignment: onLeft ? .leading : .trailing)
+        let loadingIndicator = HStack {
+            if onLeft { Spacer(minLength: 0) }
+            if isLoading {
+                ProgressView().controlSize(.small).accessibilityLabel("Loading \(title.lowercased())")
+            }
+            if !onLeft { Spacer(minLength: 0) }
+        }
+        .frame(maxWidth: .infinity)
         return VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 8) {
-                Text(url?.lastPathComponent ?? (hasInput ? "" : "No input"))
-                    .font(.caption).lineLimit(1).truncationMode(.middle)
-                    .help(url?.path ?? title)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                if onLeft { filename } else { loadingIndicator }
                 Text(title.uppercased())
                     .font(.subheadline.weight(.semibold))
                     .fixedSize()
-                HStack {
-                    Spacer(minLength: 0)
-                    if isLoading {
-                        ProgressView().controlSize(.small).accessibilityLabel("Loading \(title.lowercased())")
-                    }
-                }
-                .frame(maxWidth: .infinity)
+                if onLeft { loadingIndicator } else { filename }
             }
             ZStack {
                 HStack(spacing: 14) {
@@ -151,7 +166,7 @@ struct ContentView: View {
                         .help(onLeft ? "Paste original (⇧⌘V)" : "Paste changed (⌥⌘V)")
                     Button { open(onLeft: onLeft) } label: { Label("Open", systemImage: "folder") }
                         .keyboardShortcut("o", modifiers: onLeft ? .command : [.command, .shift])
-                        .help("Open a text file, or drop one onto this header")
+                        .help("Open a text file, or drop one onto this header or the text below")
                     Button { edit(onLeft: onLeft) } label: { Label("Edit", systemImage: "square.and.pencil") }
                         .help("Type or edit \(title.lowercased()) text")
                 }
@@ -173,9 +188,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
         .dropDestination(for: URL.self) { urls, _ in
-            guard urls.count == 1, let url = urls.first, url.isFileURL else { return false }
-            document.load(url, onLeft: onLeft)
-            return true
+            loadDroppedFile(urls, onLeft: onLeft)
         }
     }
 
@@ -188,7 +201,7 @@ struct ContentView: View {
                 Text("Compare two versions").font(.title2.weight(.semibold))
                 Text("Add an original and a changed version to see what’s different.")
                     .foregroundStyle(.secondary)
-                Text("Open two files, drop them onto the headers, or paste text from the clipboard.")
+                Text("Open two files, drop them onto either text pane, or paste text from the clipboard.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             HStack(alignment: .top, spacing: 20) {
@@ -305,6 +318,12 @@ struct ContentView: View {
     private func open(onLeft: Bool) {
         choosingLeft = onLeft
         showingImporter = true
+    }
+
+    private func loadDroppedFile(_ urls: [URL], onLeft: Bool) -> Bool {
+        guard urls.count == 1, let url = urls.first, url.isFileURL else { return false }
+        document.load(url, onLeft: onLeft)
+        return true
     }
 
     private func edit(onLeft: Bool) {

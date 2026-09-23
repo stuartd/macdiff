@@ -35,6 +35,7 @@ final class DiffDocument: ObservableObject {
     private var rightLoadGeneration = UUID()
     private var leftLoadTask: Task<Void, Never>?
     private var rightLoadTask: Task<Void, Never>?
+    private var pairLoadTask: Task<Void, Never>?
 
     var hasBothInputs: Bool { hasLeft && hasRight }
     var selectedRowID: Int? {
@@ -47,13 +48,18 @@ final class DiffDocument: ObservableObject {
         comparisonWorker?.cancel()
         leftLoadTask?.cancel()
         rightLoadTask?.cancel()
+        pairLoadTask?.cancel()
     }
 
     func setText(_ text: String, onLeft: Bool) {
-        do { try TextFileReader.validate(text) } catch {
+        do { try updateText(text, onLeft: onLeft) } catch {
             errorMessage = error.localizedDescription
-            return
         }
+    }
+
+    /// Editors handle validation errors locally so rejected drafts stay available.
+    func updateText(_ text: String, onLeft: Bool) throws {
+        try TextFileReader.validate(text)
         cancelLoad(onLeft: onLeft)
         if onLeft {
             guard text != leftText || !hasLeft || leftURL != nil else { return }
@@ -103,9 +109,46 @@ final class DiffDocument: ObservableObject {
     }
 
     func replaceComparison(original: URL, changed: URL) {
-        clear()
-        load(original, onLeft: true)
-        load(changed, onLeft: false)
+        cancelLoad(onLeft: true)
+        cancelLoad(onLeft: false)
+        errorMessage = nil
+        isLoadingLeft = true
+        isLoadingRight = true
+        let leftGeneration = leftLoadGeneration
+        let rightGeneration = rightLoadGeneration
+        pairLoadTask = Task { [weak self] in
+            let worker = Task.detached(priority: .userInitiated) {
+                let left = try readComparisonInput(original)
+                try Task.checkCancellation()
+                let right = try readComparisonInput(changed)
+                return (left, right)
+            }
+            do {
+                let (left, right) = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: {
+                    worker.cancel()
+                }
+                guard !Task.isCancelled, let self,
+                      self.loadIsCurrent(leftGeneration, onLeft: true),
+                      self.loadIsCurrent(rightGeneration, onLeft: false) else { return }
+                self.finishPairLoad()
+                // Publish neither side until the entire replacement has validated.
+                self.leftText = left
+                self.rightText = right
+                self.leftURL = original
+                self.rightURL = changed
+                self.hasLeft = true
+                self.hasRight = true
+                self.scheduleComparison()
+            } catch {
+                guard !Task.isCancelled, let self,
+                      self.loadIsCurrent(leftGeneration, onLeft: true),
+                      self.loadIsCurrent(rightGeneration, onLeft: false) else { return }
+                self.finishPairLoad()
+                self.errorMessage = error.localizedDescription
+            }
+        }
     }
 
     func swap() {
@@ -194,6 +237,11 @@ final class DiffDocument: ObservableObject {
     }
 
     private func cancelLoad(onLeft: Bool) {
+        // A manual change to either side supersedes the whole pending handoff.
+        if let pairLoadTask {
+            pairLoadTask.cancel()
+            finishPairLoad()
+        }
         if onLeft {
             leftLoadTask?.cancel()
             leftLoadGeneration = UUID()
@@ -202,6 +250,12 @@ final class DiffDocument: ObservableObject {
             rightLoadGeneration = UUID()
         }
         finishLoad(onLeft: onLeft)
+    }
+
+    private func finishPairLoad() {
+        pairLoadTask = nil
+        isLoadingLeft = false
+        isLoadingRight = false
     }
 
     private func finishLoad(onLeft: Bool) {
@@ -216,6 +270,18 @@ final class DiffDocument: ObservableObject {
 
     private func loadIsCurrent(_ generation: UUID, onLeft: Bool) -> Bool {
         generation == (onLeft ? leftLoadGeneration : rightLoadGeneration)
+    }
+}
+
+private struct ComparisonInputError: LocalizedError {
+    let errorDescription: String?
+}
+
+private func readComparisonInput(_ url: URL) throws -> String {
+    do {
+        return try TextFileReader.read(url)
+    } catch {
+        throw ComparisonInputError(errorDescription: "Couldn’t open \(url.lastPathComponent): \(error.localizedDescription)")
     }
 }
 

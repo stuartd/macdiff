@@ -206,4 +206,100 @@ private func waitForDocument(_ document: DiffDocument) async throws {
     #expect(document.modifiedCount == 1)
     #expect(document.errorMessage == nil)
 }
+@Test(arguments: [true, false]) @MainActor func failedHandoffPreservesEntireComparison(
+    invalidOnLeft: Bool
+) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let original = directory.appendingPathComponent("original.txt")
+    let changed = directory.appendingPathComponent("changed.txt")
+    let replacement = directory.appendingPathComponent("replacement.txt")
+    let invalid = directory.appendingPathComponent("invalid.txt")
+    try Data("old one\nsame\nold two".utf8).write(to: original)
+    try Data("new one\nsame\nnew two".utf8).write(to: changed)
+    try Data("replacement".utf8).write(to: replacement)
+    try Data([0x00]).write(to: invalid)
+    let document = DiffDocument()
+    document.replaceComparison(original: original, changed: changed)
+    try await waitForDocument(document)
+    document.moveChange(1)
+    let previousRows = document.rows
+    let previousChanges = document.changeStarts
+
+    document.replaceComparison(
+        original: invalidOnLeft ? invalid : replacement,
+        changed: invalidOnLeft ? replacement : invalid
+    )
+    #expect(document.isLoadingLeft && document.isLoadingRight)
+    #expect(document.rows == previousRows)
+    try await waitForDocument(document)
+
+    #expect(document.hasBothInputs)
+    #expect(document.leftText == "old one\nsame\nold two")
+    #expect(document.rightText == "new one\nsame\nnew two")
+    #expect(document.leftURL == original && document.rightURL == changed)
+    #expect(document.rows == previousRows)
+    #expect(document.changeStarts == previousChanges)
+    #expect(document.selectedChange == 1)
+    #expect(document.modifiedCount == 2)
+    #expect(document.errorMessage?.contains("invalid.txt") == true)
+}
+
+@Test(arguments: ["editLeft", "editRight", "load", "clear", "clearSide", "swap"])
+@MainActor func cancelledHandoffCannotOverwriteNewerAction(action: String) async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let original = directory.appendingPathComponent("original.txt")
+    let changed = directory.appendingPathComponent("changed.txt")
+    try Data("stale left".utf8).write(to: original)
+    try Data("stale right".utf8).write(to: changed)
+    let document = DiffDocument()
+    document.setText("left", onLeft: true)
+    document.setText("right", onLeft: false)
+    try await waitForDocument(document)
+    document.replaceComparison(original: original, changed: changed)
+    let expected: (String, String)
+    switch action {
+    case "editLeft":
+        document.setText("edit", onLeft: true)
+        expected = ("edit", "right")
+    case "editRight":
+        document.setText("edit", onLeft: false)
+        expected = ("left", "edit")
+    case "load":
+        document.load(original, onLeft: true)
+        expected = ("stale left", "right")
+    case "clear":
+        document.clear()
+        expected = ("", "")
+    case "clearSide":
+        document.clear(onLeft: false)
+        expected = ("left", "")
+    default:
+        document.swap()
+        expected = ("right", "left")
+    }
+    try await waitForDocument(document)
+    // Allow a cancelled handoff to finish and attempt publishing stale results.
+    try await Task.sleep(for: .milliseconds(250))
+    #expect(document.leftText == expected.0 && document.rightText == expected.1)
+    #expect(!document.isLoadingLeft && !document.isLoadingRight)
+    #expect(document.errorMessage == nil)
+}
+
+@Test @MainActor func editorValidationThrowsLocallyAndAllowsCorrection() throws {
+    let document = DiffDocument()
+    document.setText("previous", onLeft: true)
+    #expect(throws: (any Error).self) {
+        try document.updateText(String(repeating: "a", count: 100_001), onLeft: true)
+    }
+    #expect(document.leftText == "previous")
+    #expect(document.errorMessage == nil)
+    try document.updateText("corrected", onLeft: true)
+    #expect(document.leftText == "corrected")
+    try document.updateText("", onLeft: true)
+    #expect(document.hasLeft && document.leftText.isEmpty)
+}
 #endif

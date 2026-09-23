@@ -67,7 +67,7 @@ struct ContentView: View {
         }
         .sheet(item: $editorInput) { input in
             TextInputEditor(input: input) { text in
-                document.setText(text, onLeft: input.onLeft)
+                try document.updateText(text, onLeft: input.onLeft)
             }
         }
     }
@@ -304,8 +304,7 @@ struct ContentView: View {
             switch request {
             case .empty: break
             case let .compare(original, changed):
-                document.load(original, onLeft: true)
-                document.load(changed, onLeft: false)
+                document.replaceComparison(original: original, changed: changed)
             case .help:
                 print(LaunchRequest.usage)
                 NSApp.terminate(nil)
@@ -352,11 +351,12 @@ private struct EditorInput: Identifiable {
 
 private struct TextInputEditor: View {
     let input: EditorInput
-    let onSave: (String) -> Void
+    let onSave: (String) throws -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var draftText: String
+    @State private var validationError: String?
 
-    init(input: EditorInput, onSave: @escaping (String) -> Void) {
+    init(input: EditorInput, onSave: @escaping (String) throws -> Void) {
         self.input = input
         self.onSave = onSave
         _draftText = State(initialValue: input.text)
@@ -371,12 +371,21 @@ private struct TextInputEditor: View {
                 .autocorrectionDisabled()
                 .border(.quaternary)
                 .accessibilityLabel("\(input.onLeft ? "Original" : "Changed") text editor")
+            if let validationError {
+                Label(validationError, systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("Use Text") {
-                    onSave(draftText)
-                    dismiss()
+                    do {
+                        try onSave(draftText)
+                        dismiss()
+                    } catch {
+                        validationError = error.localizedDescription
+                    }
                 }.keyboardShortcut(.defaultAction)
             }
         }

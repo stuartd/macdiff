@@ -14,14 +14,20 @@ public struct DiffRow: Identifiable, Sendable, Equatable {
     public let newNumber: Int?
     public let newText: String?
     public let kind: DiffKind
+    /// Changed spans as Character offsets in each side's original text.
+    public let oldHighlights: [Range<Int>]
+    public let newHighlights: [Range<Int>]
 
-    public init(id: Int, oldNumber: Int?, oldText: String?, newNumber: Int?, newText: String?, kind: DiffKind) {
+    public init(id: Int, oldNumber: Int?, oldText: String?, newNumber: Int?, newText: String?, kind: DiffKind,
+                oldHighlights: [Range<Int>] = [], newHighlights: [Range<Int>] = []) {
         self.id = id
         self.oldNumber = oldNumber
         self.oldText = oldText
         self.newNumber = newNumber
         self.newText = newText
         self.kind = kind
+        self.oldHighlights = oldHighlights
+        self.newHighlights = newHighlights
     }
 }
 
@@ -73,6 +79,7 @@ public enum DiffEngine {
               let edits = editScript(lhs, rhs) else { return [] }
 
         var rows: [DiffRow] = []
+        var inlineWork = 2_000_000
         rows.reserveCapacity(max(oldLines.count, newLines.count))
         var index = 0
         while index < edits.count {
@@ -98,10 +105,18 @@ public enum DiffEngine {
                     let left = offset < deletes.count ? deletes[offset] : nil
                     let right = offset < inserts.count ? inserts[offset] : nil
                     let kind: DiffKind = left != nil && right != nil ? .modified : (left != nil ? .removed : .added)
+                    let highlights: InlineDiff.Highlights
+                    if let left, let right {
+                        highlights = InlineDiff.compare(oldLines[left], newLines[right],
+                            ignoringWhitespace: ignoringWhitespace, remainingWork: &inlineWork)
+                    } else {
+                        highlights = InlineDiff.Highlights()
+                    }
                     rows.append(DiffRow(
                         id: rows.count,
                         oldNumber: left.map { $0 + 1 }, oldText: left.map { oldLines[$0] },
-                        newNumber: right.map { $0 + 1 }, newText: right.map { newLines[$0] }, kind: kind
+                        newNumber: right.map { $0 + 1 }, newText: right.map { newLines[$0] }, kind: kind,
+                        oldHighlights: highlights.old, newHighlights: highlights.new
                     ))
                 }
             }

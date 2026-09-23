@@ -432,7 +432,9 @@ private struct DiffRowView: View {
                 .frame(width: max(52, fontSize * 3.9), alignment: .trailing)
                 .padding(.trailing, 10)
             Text(marker(onLeft)).foregroundStyle(markerColor(onLeft)).frame(width: 18)
-            Text(text?.replacingOccurrences(of: "\t", with: "    ") ?? " ")
+            Text(DiffTextFormatting.attributed(text ?? " ",
+                highlights: onLeft ? row.oldHighlights : row.newHighlights,
+                color: markerColor(onLeft)))
                 .fixedSize(horizontal: false, vertical: true)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)

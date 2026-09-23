@@ -53,6 +53,7 @@ Use `--` before paths beginning with a hyphen. `--help` prints usage.
 - **Copy** copies the complete source text, without line numbers or display formatting.
 - **Swap** reverses the two inputs; **New** in the toolbar or **File → New** clears both inputs and starts a fresh comparison.
 - Previous/next navigation jumps between groups of changed lines. The current group’s first line has an accent outline.
+- Modified lines use stronger red/green shading on the changed text within each line. Matching text keeps the subtle line background, and **Ignore spacing** also applies to these highlights.
 - **Ignore spacing** trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
 - **Appearance** offers system, light, and dark modes, plus adjustable text size. Colours are subdued, and additions/removals also have `+`/`−` markers.
 
@@ -75,6 +76,8 @@ When both files have the same name, the headers include enough parent folders to
 ## Comparison and input limits
 
 Comparisons run away from the UI thread, and newer inputs cancel obsolete work. The engine uses linear working memory rather than a full quadratic LCS table. For especially difficult large inputs, a bounded search may show a larger replacement block instead of the smallest possible set of changes.
+
+Within-line highlighting also has a bounded work budget. Difficult spans may receive broader highlights; very long lines or comparisons that exhaust this budget retain whole-line shading.
 
 LF, CRLF, and CR line endings compare equivalently. A final line break appears as a final empty row, so adding or removing the final newline is still visible. Original text is retained for copying.
 

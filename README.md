@@ -1,6 +1,6 @@
 # MacDiff
 
-A small, native macOS viewer for comparing two versions of text side by side. It is designed to work on its own or as ClipDiff’s external viewer. There are no merge controls, and source files are never modified.
+A small, native macOS viewer for comparing two versions of text side by side and reviewing working changes in a Git repository. It is designed to work on its own or as ClipDiff’s external viewer. There are no merge controls, and source files are never modified.
 
 ## Run
 
@@ -46,6 +46,19 @@ open -n dist/MacDiff.app --args '/path/to/original.txt' '/path/to/changed.txt'
 
 Use `--` before paths beginning with a hyphen. `--help` prints usage.
 
+## Reviewing a Git repository
+
+Choose **Open Repository** in the toolbar or **File → Open Repository…** (⌥⌘O), then select your project folder. Git must be available at `/usr/bin/git` (provided by Apple’s command-line developer tools).
+
+- The sidebar lists changed files, including staged, unstaged, and untracked files. Ignored files are excluded. Switch between a flat list and a directory tree, or filter by path.
+- Select a file to compare **Last Commit → Working Tree**. This combines staged and unstaged edits; it is not a preview of just the next commit. The sidebar footer describes the selected file’s staging status.
+- Added and untracked files compare against empty text; deleted files have an empty working-tree side. Staged renames compare against the original path. A repository without a first commit uses an empty base.
+- Press **Refresh** (⌘R) after editing files or changing Git state elsewhere. Refresh preserves the selected file when it is still listed.
+- Binary files, unsupported encodings, oversized files, symbolic links, submodules, and unresolved conflicts show an explanation instead of a text diff. A rename, permission change, or staged edit reversed in the working tree can have no text differences.
+- **New** (⌘N) returns to a regular two-input comparison. ClipDiff comparisons also replace the repository view.
+
+Repository review is read-only: MacDiff does not stage, commit, discard changes, or update Git’s index. Branch comparisons and individual commit views are not included yet. Linked Git worktrees and detached HEAD are supported.
+
 ## Comparing text
 
 - **Open** a file on each side, or drop one file onto each text pane or header. Dropping onto a pane loads that side, including before a comparison starts and in the blank space below short files.
@@ -83,7 +96,7 @@ LF, CRLF, and CR line endings compare equivalently. A final line break appears a
 
 Files support strict UTF-8 (with or without a byte-order mark) and UTF-16 with a byte-order mark. Unsupported encodings, binary files, and oversized inputs produce an error without replacing the previous input. Each input is limited to 5 MiB, 100,000 lines, and 100,000 display columns per line to keep the viewer responsive.
 
-Inputs stay in memory and are discarded when the app exits. MacDiff reads the clipboard only when you press Paste and writes to it only when you press Copy. Only appearance and text-size preferences are saved.
+Inputs stay in memory and are discarded when the app exits. MacDiff reads the clipboard only when you press Paste and writes to it only when you press Copy. Only appearance, text-size, and repository list/tree preferences are saved.
 
 ## Test
 
@@ -91,4 +104,4 @@ Inputs stay in memory and are discarded when the app exits. MacDiff reads the cl
 swift test
 ```
 
-Tests cover comparison correctness and cancellation, large inputs, line endings, file decoding and limits, launch arguments, and asynchronous document state/navigation.
+Tests cover comparison correctness and cancellation, large inputs, line endings, file decoding and limits, launch arguments, asynchronous document state/navigation, and repository review against temporary Git repositories (including renames, unusual paths, worktrees, and unchanged index contents).

@@ -19,25 +19,12 @@ struct ContentView: View {
             toolbar
             Divider()
             HStack(spacing: 0) {
-                sourceHeader(onLeft: true)
-                Divider()
-                sourceHeader(onLeft: false)
-            }
-            .frame(height: 74)
-            Divider()
-            GeometryReader { geometry in
-                Group {
-                    if document.hasBothInputs {
-                        diffView
-                    } else {
-                        welcome
-                    }
+                if document.isRepositoryMode {
+                    RepositorySidebar(document: document)
+                        .frame(minWidth: 220, idealWidth: 260, maxWidth: 300)
+                    Divider()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .dropDestination(for: URL.self) { urls, location in
-                    loadDroppedFile(urls, onLeft: location.x < geometry.size.width / 2)
-                }
+                comparisonPane
             }
             Divider()
             statusBar
@@ -72,6 +59,69 @@ struct ContentView: View {
         }
     }
 
+    private var comparisonPane: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                if document.isRepositoryMode {
+                    repositoryHeader(onLeft: true)
+                    Divider()
+                    repositoryHeader(onLeft: false)
+                } else {
+                    sourceHeader(onLeft: true)
+                    Divider()
+                    sourceHeader(onLeft: false)
+                }
+            }
+            .frame(height: 74)
+            Divider()
+            GeometryReader { geometry in
+                Group {
+                    if document.isScanningRepository {
+                        ProgressView("Reading repository…")
+                    } else if document.isLoadingRepositoryFile {
+                        ProgressView("Reading file…")
+                    } else if let message = document.repositoryMessage {
+                        ContentUnavailableView("Unable to show comparison", systemImage: "doc.badge.ellipsis", description: Text(message))
+                    } else if document.hasBothInputs {
+                        diffView
+                    } else if document.isRepositoryMode {
+                        ContentUnavailableView(
+                            document.repository?.changes.isEmpty == true ? "Working tree is clean" : "Select a changed file",
+                            systemImage: document.repository?.changes.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass",
+                            description: Text("Compare the last commit with the files in your working tree."))
+                    } else {
+                        welcome
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .dropDestination(for: URL.self) { urls, location in
+                    loadDroppedFile(urls, onLeft: location.x < geometry.size.width / 2)
+                }
+            }
+        }
+    }
+
+    private func repositoryHeader(onLeft: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(onLeft ? (document.repository?.head == nil ? "EMPTY BASE" : "LAST COMMIT") : "WORKING TREE")
+                    .font(.subheadline.weight(.semibold))
+                Spacer()
+                Button { copy(onLeft: onLeft) } label: { Image(systemName: "doc.on.doc") }
+                    .buttonStyle(.borderless)
+                    .disabled(!document.hasBothInputs)
+                    .help(onLeft ? "Copy committed text" : "Copy working-tree text")
+            }
+            Text((onLeft ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
+                .font(.system(size: 14, weight: .medium))
+                .lineLimit(1).truncationMode(.middle)
+                .help(document.selectedRepositoryPath ?? "")
+        }
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+    }
+
     private var toolbar: some View {
         HStack(spacing: 14) {
             Label("MacDiff", systemImage: "square.split.2x1")
@@ -80,6 +130,18 @@ struct ContentView: View {
                 Label("New", systemImage: "doc.badge.plus")
             }
             .help("Start a new comparison by clearing both inputs (⌘N)")
+            Button { document.chooseRepository() } label: {
+                Label("Open Repository", systemImage: "folder.badge.gearshape")
+            }
+            .help("Open a Git repository (⌥⌘O)")
+            if document.isRepositoryMode {
+                Button { document.refreshRepository() } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(document.isScanningRepository)
+                .help("Reload changed files and their contents (⌘R)")
+            }
             Spacer()
             Button { document.moveChange(-1) } label: {
                 Label("Previous change", systemImage: "chevron.up")
@@ -123,7 +185,7 @@ struct ContentView: View {
                 Label("Swap", systemImage: "arrow.left.arrow.right")
             }
             .keyboardShortcut("s", modifiers: [.command, .option])
-            .disabled(!document.hasLeft && !document.hasRight)
+            .disabled(document.isRepositoryMode || (!document.hasLeft && !document.hasRight))
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 18)
@@ -263,7 +325,7 @@ struct ContentView: View {
                     if document.isComparing {
                         ProgressView("Comparing…").padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                     } else if document.rows.isEmpty {
-                        ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text("Paste or edit either side to compare text."))
+                        ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.isRepositoryMode ? "Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
                     }
                 }
             }
@@ -285,13 +347,17 @@ struct ContentView: View {
     }
 
     private var statusText: String {
+        if document.isScanningRepository { return "Reading repository…" }
+        if document.isLoadingRepositoryFile { return "Reading file…" }
+        if document.repositoryMessage != nil { return "Comparison unavailable" }
+        if document.isRepositoryMode && !document.hasBothInputs { return "\(document.repository?.changes.count ?? 0) changed files" }
         if document.isLoadingLeft || document.isLoadingRight { return "Loading text…" }
         if !document.hasLeft && !document.hasRight { return "Add two inputs to begin" }
         if !document.hasLeft { return "Add the original text" }
         if !document.hasRight { return "Add the changed text" }
         if document.isComparing { return "Comparing…" }
         if document.changeStarts.isEmpty {
-            return document.ignoreWhitespace ? "No differences ignoring spacing" : "No differences"
+            return document.ignoreWhitespace ? "No differences ignoring spacing" : (document.isRepositoryMode ? "No text differences · Git status may reflect staging, a rename, or permissions" : "No differences")
         }
         return "Change \((document.selectedChange ?? 0) + 1) of \(document.changeStarts.count)"
     }
@@ -320,7 +386,7 @@ struct ContentView: View {
     }
 
     private func loadDroppedFile(_ urls: [URL], onLeft: Bool) -> Bool {
-        guard urls.count == 1, let url = urls.first, url.isFileURL else { return false }
+        guard !document.isRepositoryMode, urls.count == 1, let url = urls.first, url.isFileURL else { return false }
         document.load(url, onLeft: onLeft)
         return true
     }

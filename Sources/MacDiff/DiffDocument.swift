@@ -28,6 +28,23 @@ final class DiffDocument: ObservableObject {
         }
     }
 
+    @Published private(set) var repository: GitSnapshot?
+    @Published private(set) var repositoryURL: URL?
+    @Published private(set) var selectedRepositoryPath: String?
+    @Published private(set) var isScanningRepository = false
+    @Published private(set) var isLoadingRepositoryFile = false
+    @Published private(set) var repositoryMessage: String?
+    var isChoosingRepository = false
+    private var repositoryTask: Task<Void, Never>?
+    private var repositoryFileTask: Task<Void, Never>?
+    private var repositoryGeneration = UUID()
+    private var repositoryFileGeneration = UUID()
+
+    var isRepositoryMode: Bool { repositoryURL != nil }
+    var selectedRepositoryChange: GitChange? {
+        repository?.changes.first { $0.path == selectedRepositoryPath }
+    }
+
     private var comparisonGeneration = UUID()
     private var comparisonTask: Task<Void, Never>?
     private var comparisonWorker: Task<Comparison, Never>?
@@ -44,6 +61,8 @@ final class DiffDocument: ObservableObject {
     }
 
     deinit {
+        repositoryTask?.cancel()
+        repositoryFileTask?.cancel()
         comparisonTask?.cancel()
         comparisonWorker?.cancel()
         leftLoadTask?.cancel()
@@ -60,6 +79,7 @@ final class DiffDocument: ObservableObject {
     /// Editors handle validation errors locally so rejected drafts stay available.
     func updateText(_ text: String, onLeft: Bool) throws {
         try TextFileReader.validate(text)
+        closeRepository()
         cancelLoad(onLeft: onLeft)
         if onLeft {
             guard text != leftText || !hasLeft || leftURL != nil else { return }
@@ -76,6 +96,7 @@ final class DiffDocument: ObservableObject {
     }
 
     func load(_ url: URL, onLeft: Bool) {
+        closeRepository()
         cancelLoad(onLeft: onLeft)
         let generation = onLeft ? leftLoadGeneration : rightLoadGeneration
         if onLeft { isLoadingLeft = true } else { isLoadingRight = true }
@@ -109,6 +130,7 @@ final class DiffDocument: ObservableObject {
     }
 
     func replaceComparison(original: URL, changed: URL) {
+        closeRepository()
         cancelLoad(onLeft: true)
         cancelLoad(onLeft: false)
         errorMessage = nil
@@ -152,6 +174,7 @@ final class DiffDocument: ObservableObject {
     }
 
     func swap() {
+        closeRepository()
         cancelLoad(onLeft: true)
         cancelLoad(onLeft: false)
         (leftText, rightText) = (rightText, leftText)
@@ -161,6 +184,11 @@ final class DiffDocument: ObservableObject {
     }
 
     func clear() {
+        closeRepository()
+        clearInputs()
+    }
+
+    private func clearInputs() {
         cancelLoad(onLeft: true)
         cancelLoad(onLeft: false)
         leftText = ""
@@ -174,6 +202,7 @@ final class DiffDocument: ObservableObject {
     }
 
     func clear(onLeft: Bool) {
+        closeRepository()
         cancelLoad(onLeft: onLeft)
         if onLeft {
             leftText = ""
@@ -185,6 +214,98 @@ final class DiffDocument: ObservableObject {
             hasRight = false
         }
         scheduleComparison()
+    }
+
+    func openRepository(_ url: URL) {
+        closeRepository()
+        repositoryURL = url
+        refreshRepository()
+    }
+
+    func refreshRepository() {
+        guard let url = repositoryURL else { return }
+        repositoryTask?.cancel()
+        repositoryFileTask?.cancel()
+        repositoryGeneration = UUID()
+        repositoryFileGeneration = UUID()
+        let generation = repositoryGeneration
+        let previousPath = selectedRepositoryPath
+        isScanningRepository = true
+        isLoadingRepositoryFile = false
+        repositoryMessage = nil
+        clearInputs()
+        repositoryTask = Task { [weak self] in
+            let worker = Task.detached(priority: .userInitiated) { try GitRepository.scan(url) }
+            do {
+                let snapshot = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: { worker.cancel() }
+                guard !Task.isCancelled, let self, self.repositoryGeneration == generation else { return }
+                self.repository = snapshot
+                self.repositoryURL = snapshot.root
+                self.isScanningRepository = false
+                self.repositoryTask = nil
+                let path = snapshot.changes.first { $0.path == previousPath }?.path ?? snapshot.changes.first?.path
+                self.selectRepositoryPath(path)
+            } catch {
+                guard !Task.isCancelled, let self, self.repositoryGeneration == generation else { return }
+                self.isScanningRepository = false
+                self.repositoryTask = nil
+                self.repository = nil
+                self.selectedRepositoryPath = nil
+                self.repositoryMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func selectRepositoryPath(_ path: String?) {
+        repositoryFileTask?.cancel()
+        repositoryFileGeneration = UUID()
+        let generation = repositoryFileGeneration
+        selectedRepositoryPath = path
+        repositoryMessage = nil
+        isLoadingRepositoryFile = false
+        clearInputs()
+        guard let repository, let change = repository.changes.first(where: { $0.path == path }) else { return }
+        isLoadingRepositoryFile = true
+        repositoryFileTask = Task { [weak self] in
+            let worker = Task.detached(priority: .userInitiated) {
+                try GitRepository.comparison(for: change, in: repository)
+            }
+            do {
+                let pair = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: { worker.cancel() }
+                guard !Task.isCancelled, let self, self.repositoryFileGeneration == generation else { return }
+                self.isLoadingRepositoryFile = false
+                self.repositoryFileTask = nil
+                self.leftText = pair.original
+                self.rightText = pair.changed
+                self.hasLeft = true
+                self.hasRight = true
+                self.scheduleComparison()
+            } catch {
+                guard !Task.isCancelled, let self, self.repositoryFileGeneration == generation else { return }
+                self.isLoadingRepositoryFile = false
+                self.repositoryFileTask = nil
+                self.repositoryMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func closeRepository() {
+        repositoryTask?.cancel()
+        repositoryFileTask?.cancel()
+        repositoryTask = nil
+        repositoryFileTask = nil
+        repositoryGeneration = UUID()
+        repositoryFileGeneration = UUID()
+        repository = nil
+        repositoryURL = nil
+        selectedRepositoryPath = nil
+        isScanningRepository = false
+        isLoadingRepositoryFile = false
+        repositoryMessage = nil
     }
 
     func moveChange(_ delta: Int) {

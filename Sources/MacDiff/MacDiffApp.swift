@@ -16,6 +16,8 @@ struct MacDiffApp: App {
             CommandGroup(replacing: .newItem) {
                 Button("New") { appDelegate.document.clear() }
                     .keyboardShortcut("n", modifiers: .command)
+                Button("Open Repository…") { appDelegate.document.chooseRepository() }
+                    .keyboardShortcut("o", modifiers: [.command, .option])
             }
         }
     }

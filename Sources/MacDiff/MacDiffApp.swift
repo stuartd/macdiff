@@ -12,13 +12,9 @@ struct MacDiffApp: App {
                 .frame(minWidth: 960, minHeight: 600)
         }
         .defaultSize(width: 1200, height: 760)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
-            CommandGroup(replacing: .newItem) {
-                Button("New") { appDelegate.document.clear() }
-                    .keyboardShortcut("n", modifiers: .command)
-                Button("Open Repository…") { appDelegate.document.chooseRepository() }
-                    .keyboardShortcut("o", modifiers: [.command, .option])
-            }
+            ComparisonCommands(document: appDelegate.document)
         }
     }
 }

@@ -48,7 +48,7 @@ Use `--` before paths beginning with a hyphen. `--help` prints usage.
 
 ## Reviewing a Git repository
 
-Choose **Open Repository** in the toolbar or **File → Open Repository…** (⌥⌘O), then select your project folder. Git must be available at `/usr/bin/git` (provided by Apple’s command-line developer tools).
+Choose **Open → Open Repository…** from the folder menu in the window toolbar, or **File → Open Repository…** (⌥⌘O), then select your project folder. Git must be available at `/usr/bin/git` (provided by Apple’s command-line developer tools).
 
 - The sidebar lists changed files, including staged, unstaged, and untracked files. Ignored files are excluded. Switch between a flat list and a directory tree, or filter by path.
 - Select a file to compare **Last Commit → Working Tree**. This combines staged and unstaged edits; it is not a preview of just the next commit. The sidebar footer describes the selected file’s staging status.
@@ -61,14 +61,14 @@ Repository review is read-only: MacDiff does not stage, commit, discard changes,
 
 ## Comparing text
 
-- **Open** a file on each side, or drop one file onto each text pane or header. Dropping onto a pane loads that side, including before a comparison starts and in the blank space below short files.
-- **Paste** text into either side, or use **Edit** to enter a snippet. An explicitly empty input can be compared too.
-- **Copy** copies the complete source text, without line numbers or display formatting.
-- **Swap** reverses the two inputs; **New** in the toolbar or **File → New** clears both inputs and starts a fresh comparison.
+- Use **File → Open Original… / Open Changed…**, the toolbar’s folder menu, or the **…** menu in each pane header to open files. You can also drop one file onto each text pane or header. Dropping onto a pane loads that side, including before a comparison starts and in the blank space below short files.
+- Use the **Edit** menu or a pane’s **…** menu to **Paste** text into either side or **Edit** a snippet. An explicitly empty input can be compared too.
+- **Copy Text** in each pane’s **…** menu (or the **Edit** menu) copies the complete source text, without line numbers or display formatting. Repository headers have a copy icon.
+- **Comparison → Swap Inputs** reverses the two inputs; **File → New** (⌘N) clears both inputs and starts a fresh comparison.
 - Previous/next navigation jumps between groups of changed lines. The current group’s first line has an accent outline.
 - Modified lines use stronger red/green shading on the changed text within each line. Matching text keeps the subtle line background, and **Ignore spacing** also applies to these highlights.
-- **Ignore spacing** trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
-- **Appearance** offers system, light, and dark modes, plus adjustable text size. Colours are subdued, and additions/removals also have `+`/`−` markers.
+- **Ignore Spacing**, in the **Comparison** menu or the toolbar’s comparison options, trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
+- **View → Appearance** offers system, light, and dark modes; the **View** menu also has text-size controls. Colours are subdued, and additions/removals also have `+`/`−` markers.
 
 The panes scroll together and each occupy half the window. Long lines wrap, with both sides of each row kept at the same height so matching lines remain aligned. Tabs display as four spaces; copying preserves the original tabs.
 

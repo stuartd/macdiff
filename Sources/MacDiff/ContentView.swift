@@ -16,8 +16,6 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            toolbar
-            Divider()
             HStack(spacing: 0) {
                 if document.isRepositoryMode {
                     RepositorySidebar(document: document)
@@ -31,6 +29,11 @@ struct ContentView: View {
         }
         .background(Color(nsColor: .textBackgroundColor))
         .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+        .toolbar { windowToolbar }
+        .focusedSceneValue(\.comparisonActions, ComparisonActions(
+            open: open, paste: paste, edit: edit, copy: copy,
+            canChangeInputs: !document.isRepositoryMode && editorInput == nil && !showingImporter
+        ))
         .task { loadLaunchInputs() }
         .fileImporter(isPresented: $showingImporter, allowedContentTypes: [.data]) { result in
             switch result {
@@ -122,75 +125,52 @@ struct ContentView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
     }
 
-    private var toolbar: some View {
-        HStack(spacing: 14) {
-            Label("MacDiff", systemImage: "square.split.2x1")
-                .font(.headline)
-            Button { document.clear() } label: {
-                Label("New", systemImage: "doc.badge.plus")
+    @ToolbarContentBuilder
+    private var windowToolbar: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
+            Menu {
+                Button("Open Original…") { open(onLeft: true) }
+                    .disabled(document.isRepositoryMode)
+                Button("Open Changed…") { open(onLeft: false) }
+                    .disabled(document.isRepositoryMode)
+                Divider()
+                Button("Open Repository…") { document.chooseRepository() }
+            } label: {
+                Label("Open", systemImage: "folder")
             }
-            .help("Start a new comparison by clearing both inputs (⌘N)")
-            Button { document.chooseRepository() } label: {
-                Label("Open Repository", systemImage: "folder.badge.gearshape")
-            }
-            .help("Open a Git repository (⌥⌘O)")
+            .accessibilityLabel("Open")
+            .help("Open files or a Git repository")
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
             if document.isRepositoryMode {
                 Button { document.refreshRepository() } label: {
                     Label("Refresh", systemImage: "arrow.clockwise")
                 }
-                .keyboardShortcut("r", modifiers: .command)
                 .disabled(document.isScanningRepository)
-                .help("Reload changed files and their contents (⌘R)")
+                .help("Refresh repository (⌘R)")
             }
-            Spacer()
             Button { document.moveChange(-1) } label: {
-                Label("Previous change", systemImage: "chevron.up")
+                Label("Previous Change", systemImage: "chevron.up")
             }
-            .labelStyle(.iconOnly)
-            .keyboardShortcut("[", modifiers: .command)
             .help("Previous group of changes (⌘[)")
             .disabled(document.changeStarts.isEmpty || document.isComparing)
             Button { document.moveChange(1) } label: {
-                Label("Next change", systemImage: "chevron.down")
+                Label("Next Change", systemImage: "chevron.down")
             }
-            .labelStyle(.iconOnly)
-            .keyboardShortcut("]", modifiers: .command)
             .help("Next group of changes (⌘])")
             .disabled(document.changeStarts.isEmpty || document.isComparing)
-            Divider().frame(height: 18)
-            Menu {
-                Picker("Appearance", selection: $appearance) {
-                    Text("System").tag("system")
-                    Text("Light").tag("light")
-                    Text("Dark").tag("dark")
-                }
-                Divider()
-                Button("Larger Text") { fontSize = min(fontSize + 1, 22) }
-                    .keyboardShortcut("+", modifiers: .command)
-                Button("Smaller Text") { fontSize = max(fontSize - 1, 11) }
-                    .keyboardShortcut("-", modifiers: .command)
-                Button("Default Text Size") { fontSize = 13 }
-                    .keyboardShortcut("0", modifiers: .command)
-            } label: {
-                Label("Appearance", systemImage: "textformat.size")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
-            .help("Choose light or dark appearance and adjust text size")
-            Toggle("Ignore spacing", isOn: $document.ignoreWhitespace)
-                .toggleStyle(.switch)
-                .controlSize(.small)
-                .help("Ignore leading and trailing whitespace and changes in whitespace runs. Line breaks still matter.")
-            Button { document.swap() } label: {
-                Label("Swap", systemImage: "arrow.left.arrow.right")
-            }
-            .keyboardShortcut("s", modifiers: [.command, .option])
-            .disabled(document.isRepositoryMode || (!document.hasLeft && !document.hasRight))
         }
-        .buttonStyle(.borderless)
-        .padding(.horizontal, 18)
-        .frame(height: 48)
-        .background(.bar)
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Toggle("Ignore Spacing", isOn: $document.ignoreWhitespace)
+                Button("Swap Inputs") { document.swap() }
+                    .disabled(document.isRepositoryMode || (!document.hasLeft && !document.hasRight))
+            } label: {
+                Label("Comparison Options", systemImage: document.ignoreWhitespace ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+            }
+            .accessibilityLabel("Comparison Options")
+            .help(document.ignoreWhitespace ? "Comparison options · Ignoring spacing" : "Comparison options")
+        }
     }
 
     private func sourceHeader(onLeft: Bool) -> some View {
@@ -199,52 +179,35 @@ struct ContentView: View {
         let isLoading = onLeft ? document.isLoadingLeft : document.isLoadingRight
         let title = onLeft ? "Original" : "Changed"
         let otherURL = onLeft ? document.rightURL : document.leftURL
-        let filename = Text(url.map { FilePathLabel.title(for: $0, comparedWith: otherURL) } ?? (hasInput ? "" : "No input"))
-            .font(.system(size: 16, weight: .medium))
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .help(url.map { FilePathLabel.clipboardTitle(for: $0) ?? $0.path } ?? title)
-            .frame(maxWidth: .infinity, alignment: onLeft ? .leading : .trailing)
-        let loadingIndicator = HStack {
-            if onLeft { Spacer(minLength: 0) }
+        return HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(title.uppercased())
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(url.map { FilePathLabel.title(for: $0, comparedWith: otherURL) } ?? (hasInput ? "Text input" : "No input"))
+                    .font(.system(size: 14, weight: .medium))
+                    .lineLimit(1).truncationMode(.middle)
+                    .help(url.map { FilePathLabel.clipboardTitle(for: $0) ?? $0.path } ?? title)
+            }
+            Spacer(minLength: 0)
             if isLoading {
                 ProgressView().controlSize(.small).accessibilityLabel("Loading \(title.lowercased())")
             }
-            if !onLeft { Spacer(minLength: 0) }
-        }
-        .frame(maxWidth: .infinity)
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                if onLeft { filename } else { loadingIndicator }
-                Text(title.uppercased())
-                    .font(.subheadline.weight(.semibold))
-                    .fixedSize()
-                if onLeft { loadingIndicator } else { filename }
+            Menu {
+                Button("Open File…") { open(onLeft: onLeft) }
+                Button("Paste Text") { paste(onLeft: onLeft) }
+                Button("Edit Text…") { edit(onLeft: onLeft) }
+                Divider()
+                Button("Copy Text") { copy(onLeft: onLeft) }.disabled(!hasInput)
+                Button("Clear Input") { document.clear(onLeft: onLeft) }.disabled(!hasInput && !isLoading)
+            } label: {
+                Label("\(title) input actions", systemImage: "ellipsis.circle")
             }
-            ZStack {
-                HStack(spacing: 14) {
-                    Button { paste(onLeft: onLeft) } label: { Label("Paste", systemImage: "doc.on.clipboard") }
-                        .keyboardShortcut("v", modifiers: onLeft ? [.command, .shift] : [.command, .option])
-                        .help(onLeft ? "Paste original (⇧⌘V)" : "Paste changed (⌥⌘V)")
-                    Button { open(onLeft: onLeft) } label: { Label("Open", systemImage: "folder") }
-                        .keyboardShortcut("o", modifiers: onLeft ? .command : [.command, .shift])
-                        .help("Open a text file, or drop one onto this header or the text below")
-                    Button { edit(onLeft: onLeft) } label: { Label("Edit", systemImage: "square.and.pencil") }
-                        .help("Type or edit \(title.lowercased()) text")
-                }
-                .frame(maxWidth: .infinity)
-                HStack(spacing: 14) {
-                    Button { copy(onLeft: onLeft) } label: { Label("Copy \(title.lowercased()) text", systemImage: "doc.on.doc") }
-                        .labelStyle(.iconOnly).disabled(!hasInput)
-                        .help("Copy the complete \(title.lowercased()) text")
-                    Button { document.clear(onLeft: onLeft) } label: { Label("Clear \(title.lowercased())", systemImage: "xmark.circle") }
-                        .labelStyle(.iconOnly).disabled(!hasInput && !isLoading)
-                        .help("Clear \(title.lowercased()) input")
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-            .buttonStyle(.borderless)
-            .font(.callout)
+            .labelStyle(.iconOnly)
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("Open, paste, edit, or copy \(title.lowercased()) text")
         }
         .padding(.horizontal, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity)

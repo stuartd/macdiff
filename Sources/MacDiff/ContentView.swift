@@ -11,7 +11,7 @@ struct ContentView: View {
     @State private var importDirectory = URL.documentsDirectory
     @State private var editorInput: EditorInput?
     @State private var loadedLaunchInputs = false
-    @AppStorage("diffFontSize") private var fontSize = 13.0
+    @AppStorage("diffFontSize") private var fontSize = AppTypography.defaultDiffSize
     @AppStorage("appearance") private var appearance = "system"
 
     var body: some View {
@@ -19,7 +19,7 @@ struct ContentView: View {
             HStack(spacing: 0) {
                 if document.isRepositoryMode {
                     RepositorySidebar(document: document)
-                        .frame(minWidth: 220, idealWidth: 260, maxWidth: 300)
+                        .frame(minWidth: 260, idealWidth: 300, maxWidth: 340)
                     Divider()
                 }
                 comparisonPane
@@ -27,6 +27,7 @@ struct ContentView: View {
             Divider()
             statusBar
         }
+        .font(AppTypography.body)
         .background(Color(nsColor: .textBackgroundColor))
         .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
         .toolbar { windowToolbar }
@@ -109,7 +110,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(onLeft ? (document.repository?.head == nil ? "EMPTY BASE" : "LAST COMMIT") : "WORKING TREE")
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppTypography.body.weight(.semibold))
                 Spacer()
                 Button { copy(onLeft: onLeft) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless)
@@ -117,7 +118,7 @@ struct ContentView: View {
                     .help(onLeft ? "Copy committed text" : "Copy working-tree text")
             }
             Text((onLeft ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
-                .font(.system(size: 14, weight: .medium))
+                .font(AppTypography.heading)
                 .lineLimit(1).truncationMode(.middle)
                 .help(document.selectedRepositoryPath ?? "")
         }
@@ -182,10 +183,10 @@ struct ContentView: View {
         return HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(title.uppercased())
-                    .font(.subheadline.weight(.semibold))
+                    .font(AppTypography.body.weight(.semibold))
                     .foregroundStyle(.secondary)
                 Text(url.map { FilePathLabel.title(for: $0, comparedWith: otherURL) } ?? (hasInput ? "Text input" : "No input"))
-                    .font(.system(size: 14, weight: .medium))
+                    .font(AppTypography.heading)
                     .lineLimit(1).truncationMode(.middle)
                     .help(url.map { FilePathLabel.clipboardTitle(for: $0) ?? $0.path } ?? title)
             }
@@ -227,7 +228,7 @@ struct ContentView: View {
                 Text("Add an original and a changed version to see what’s different.")
                     .foregroundStyle(.secondary)
                 Text("Open two files, drop them onto either text pane, or paste text from the clipboard.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(AppTypography.body).foregroundStyle(.secondary)
             }
             HStack(alignment: .top, spacing: 20) {
                 inputCard(onLeft: true)
@@ -245,10 +246,10 @@ struct ContentView: View {
         let text = onLeft ? document.leftText : document.rightText
         return VStack(alignment: .leading, spacing: 12) {
             Label(onLeft ? "Original" : "Changed", systemImage: hasInput ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.headline).foregroundStyle(hasInput ? Color.accentColor : .secondary)
+                .font(AppTypography.heading).foregroundStyle(hasInput ? Color.accentColor : .secondary)
             if hasInput {
                 Text(text.isEmpty ? "Empty text" : String(text.prefix(1200)))
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(size: fontSize, design: .monospaced))
                     .lineLimit(7)
                     .frame(maxWidth: .infinity, minHeight: 110, maxHeight: 110, alignment: .topLeading)
                 Button("Edit text…") { edit(onLeft: onLeft) }
@@ -305,7 +306,7 @@ struct ContentView: View {
             Spacer()
             Text(statusText).foregroundStyle(.secondary)
         }
-        .font(.caption).padding(.horizontal, 16).frame(height: 30).background(.bar)
+        .font(AppTypography.body).padding(.horizontal, 16).frame(minHeight: 36).background(.bar)
         .accessibilityElement(children: .combine)
     }
 
@@ -384,6 +385,7 @@ private struct TextInputEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draftText: String
     @State private var validationError: String?
+    @AppStorage("diffFontSize") private var fontSize = AppTypography.defaultDiffSize
 
     init(input: EditorInput, onSave: @escaping (String) throws -> Void) {
         self.input = input
@@ -396,7 +398,7 @@ private struct TextInputEditor: View {
             Text("\(input.onLeft ? "Original" : "Changed") text").font(.title2.weight(.semibold))
             Text("Paste or type plain text. You can also compare an empty input.").foregroundStyle(.secondary)
             TextEditor(text: $draftText)
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: fontSize, design: .monospaced))
                 .autocorrectionDisabled()
                 .border(.quaternary)
                 .accessibilityLabel("\(input.onLeft ? "Original" : "Changed") text editor")
@@ -418,6 +420,7 @@ private struct TextInputEditor: View {
                 }.keyboardShortcut(.defaultAction)
             }
         }
+        .font(AppTypography.body)
         .padding(24)
         .frame(width: 720, height: 480)
     }

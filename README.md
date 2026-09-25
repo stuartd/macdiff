@@ -68,7 +68,7 @@ Repository review is read-only: MacDiff does not stage, commit, discard changes,
 - Previous/next navigation jumps between groups of changed lines. The current group’s first line has an accent outline.
 - Modified lines use stronger red/green shading on the changed text within each line. Matching text keeps the subtle line background, and **Ignore spacing** also applies to these highlights.
 - **Ignore Spacing**, in the **Comparison** menu or the toolbar’s comparison options, trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
-- **View → Appearance** offers system, light, and dark modes; the **View** menu also has text-size controls. Colours are subdued, and additions/removals also have `+`/`−` markers.
+- **View → Appearance** offers system, light, and dark modes; the **View** menu also has text-size controls for comparisons, input previews, and the text editor (15-point default). Sidebar and status text use a separate readable interface size. Colours are subdued, and additions/removals also have `+`/`−` markers.
 
 The panes scroll together and each occupy half the window. Long lines wrap, with both sides of each row kept at the same height so matching lines remain aligned. Tabs display as four spaces; copying preserves the original tabs.
 

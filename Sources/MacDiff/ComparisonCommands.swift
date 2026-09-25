@@ -25,7 +25,7 @@ extension FocusedValues {
 struct ComparisonCommands: Commands {
     @ObservedObject var document: DiffDocument
     @FocusedValue(\.comparisonActions) private var actions
-    @AppStorage("diffFontSize") private var fontSize = 13.0
+    @AppStorage("diffFontSize") private var fontSize = AppTypography.defaultDiffSize
     @AppStorage("appearance") private var appearance = "system"
 
     var body: some Commands {
@@ -90,7 +90,7 @@ struct ComparisonCommands: Commands {
                 .keyboardShortcut("+", modifiers: .command)
             Button("Smaller Text") { fontSize = max(fontSize - 1, 11) }
                 .keyboardShortcut("-", modifiers: .command)
-            Button("Default Text Size") { fontSize = 13 }
+            Button("Default Text Size") { fontSize = AppTypography.defaultDiffSize }
                 .keyboardShortcut("0", modifiers: .command)
         }
     }

@@ -43,14 +43,14 @@ struct RepositorySidebar: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 Label(document.repositoryURL?.lastPathComponent ?? "Repository", systemImage: "folder")
-                    .font(.headline).lineLimit(1).truncationMode(.middle)
+                    .font(AppTypography.heading).lineLimit(1).truncationMode(.middle)
                     .help(document.repositoryURL?.path ?? "")
                 HStack {
                     Text(document.repository?.branch ?? "Repository").lineLimit(1)
                     Spacer()
                     Text("\(document.repository?.changes.count ?? 0) files").monospacedDigit()
                 }
-                .font(.caption).foregroundStyle(.secondary)
+                .font(AppTypography.body).foregroundStyle(.secondary)
                 Picker("View", selection: $showsTree) {
                     Image(systemName: "list.bullet").tag(false).help("File list")
                     Image(systemName: "list.bullet.indent").tag(true).help("Directory tree")
@@ -73,7 +73,7 @@ struct RepositorySidebar: View {
                                 Spacer()
                                 Text("\(node.fileCount)").foregroundStyle(.secondary)
                             }
-                            .font(.callout)
+                            .font(AppTypography.body)
                         }
                     }
                 } else {
@@ -90,14 +90,17 @@ struct RepositorySidebar: View {
                 }
             }
             Divider()
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: 8) {
                 Text("Last commit → Working tree").fontWeight(.medium)
                 Text(document.selectedRepositoryChange?.stagingDescription ?? "Includes staged, unstaged, and untracked files.")
                     .foregroundStyle(.secondary)
                 Text("Read-only · ⌘R to refresh").foregroundStyle(.secondary)
             }
-            .font(.caption).padding(12)
+            .font(AppTypography.body)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(14)
         }
+        .font(AppTypography.body)
         .background(.bar)
         .onChange(of: document.repositoryURL) { _, _ in filter = "" }
     }
@@ -109,16 +112,16 @@ struct RepositorySidebar: View {
                 Text((change.path as NSString).lastPathComponent).lineLimit(1).truncationMode(.middle)
                 if showParent && change.path.contains("/") {
                     Text((change.path as NSString).deletingLastPathComponent)
-                        .font(.caption2).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                        .font(AppTypography.detail).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
             }
             Spacer(minLength: 2)
             Text(change.isUntracked ? "?" : String(change.status.prefix(1)))
-                .font(.caption.monospaced().weight(.semibold))
+                .font(AppTypography.body.monospaced().weight(.semibold))
                 .foregroundStyle(change.isConflicted ? Color.red : change.status == "Deleted" ? .red : change.status == "Added" || change.isUntracked ? .green : .orange)
                 .help(change.status)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
         .help("\(change.path)\n\(change.status) · \(change.stagingDescription)")
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(change.path), \(change.status), \(change.stagingDescription)")

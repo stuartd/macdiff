@@ -69,32 +69,50 @@ struct ContentView: View {
 
     private var repositoryReviewHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
+            Picker("Review", selection: Binding(
+                get: { document.repositoryReviewMode },
+                set: { document.selectRepositoryReviewMode($0) }
+            )) {
+                Text("Working changes").tag(GitReviewMode.workingChanges)
+                Text("Last commit").tag(GitReviewMode.lastCommit)
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 310)
             HStack(spacing: 20) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Working changes on \(document.repository?.branch ?? "…")")
+                    Text("\(document.repositoryReviewMode == .lastCommit ? "Last commit" : "Working changes") on \(document.repository?.branch ?? "…")")
                         .font(AppTypography.heading)
                         .lineLimit(1).truncationMode(.middle)
-                    Text("Only files changed in your working tree")
+                    Text(document.repositoryReviewMode == .lastCommit ? document.repository?.commit.map { "\($0.shortID) · \($0.subject)" } ?? "No commit selected" : "Only files changed in your working tree")
                         .foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.tail)
+                        .help(document.repository?.commit?.subject ?? "Only files changed in your working tree")
                 }
                 Spacer(minLength: 0)
-                Picker("Compare against", selection: Binding(
-                    get: { document.repositoryBaselineRef },
-                    set: { document.selectRepositoryBaseline($0) }
-                )) {
-                    Text(document.repository?.head == nil ? "Empty base" : "Last commit on \(document.repository?.branch ?? "HEAD")")
-                        .tag(nil as String?)
-                    Divider()
-                    ForEach(document.repository?.branches ?? []) { branch in
-                        Text(branch.name).tag(Optional(branch.id))
+                if document.repositoryReviewMode == .workingChanges {
+                    Picker("Compare against", selection: Binding(
+                        get: { document.repositoryBaselineRef },
+                        set: { document.selectRepositoryBaseline($0) }
+                    )) {
+                        Text(document.repository?.head == nil ? "Empty base" : "Last commit on \(document.repository?.branch ?? "HEAD")")
+                            .tag(nil as String?)
+                        Divider()
+                        ForEach(document.repository?.branches ?? []) { branch in
+                            Text(branch.name).tag(Optional(branch.id))
+                        }
                     }
+                    .pickerStyle(.menu)
+                    .frame(maxWidth: 360)
+                    .disabled(document.isScanningRepository || document.repository == nil)
+                    .help("Choose a baseline for all working changes. The file list stays the same.")
+                } else {
+                    Text(document.repositoryReviewDescription)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: 300, alignment: .trailing)
                 }
-                .pickerStyle(.menu)
-                .frame(maxWidth: 360)
-                .disabled(document.isScanningRepository || document.repository == nil)
-                .help("Choose a baseline for all working changes. The file list stays the same.")
             }
-            if let notice = document.repositoryBaselineNotice {
+            if document.repositoryReviewMode == .workingChanges, let notice = document.repositoryBaselineNotice {
                 Text(notice).foregroundStyle(.secondary)
             }
         }
@@ -138,9 +156,9 @@ struct ContentView: View {
                         }
                     } else if document.isRepositoryMode {
                         ContentUnavailableView(
-                            document.repository?.changes.isEmpty == true ? "Working tree is clean" : "Select a changed file",
+                            document.repositoryEmptyTitle,
                             systemImage: document.repository?.changes.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass",
-                            description: Text("Choose a baseline above, then select a working-change file to compare."))
+                            description: Text(document.repositoryReviewDescription))
                     } else {
                         welcome
                     }
@@ -157,15 +175,15 @@ struct ContentView: View {
     private func repositoryHeader(onLeft: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(onLeft ? document.repositoryBaselineLabel : "Working tree on \(document.repository?.branch ?? "HEAD")")
+                Text(onLeft ? document.repositoryBaselineLabel : document.repositoryTargetLabel)
                     .font(AppTypography.body.weight(.semibold))
                     .lineLimit(1).truncationMode(.middle)
-                    .help(onLeft ? document.repositoryBaselineLabel : "Working tree on \(document.repository?.branch ?? "HEAD")")
+                    .help(onLeft ? document.repositoryBaselineLabel : document.repositoryTargetLabel)
                 Spacer()
                 Button { copy(onLeft: onLeft) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless)
                     .disabled(!document.hasBothInputs)
-                    .help(onLeft ? "Copy committed text" : "Copy working-tree text")
+                    .help(onLeft || document.repositoryReviewMode == .lastCommit ? "Copy committed text" : "Copy working-tree text")
             }
             Text((onLeft && document.repositoryBaseline == nil ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
                 .font(AppTypography.heading)
@@ -374,6 +392,9 @@ struct ContentView: View {
             return "Identical to \(baseline.name)"
         }
         if document.changeStarts.isEmpty {
+            if document.repositoryReviewMode == .lastCommit && !document.ignoreWhitespace {
+                return "No text differences · This commit may change a filename or permissions"
+            }
             return document.ignoreWhitespace ? "No differences ignoring spacing" : (document.isRepositoryMode ? "No text differences · Git status may reflect staging, a rename, or permissions" : "No differences")
         }
         return "Change \((document.selectedChange ?? 0) + 1) of \(document.changeStarts.count)"

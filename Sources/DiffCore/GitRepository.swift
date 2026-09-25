@@ -37,12 +37,26 @@ public struct GitBranch: Identifiable, Equatable, Sendable {
     public let commit: String
 }
 
+public enum GitReviewMode: String, Sendable {
+    case workingChanges
+    case lastCommit
+}
+
+public struct GitCommit: Sendable {
+    public let id: String
+    public let subject: String
+    public let parents: [String]
+    public var shortID: String { String(id.prefix(7)) }
+}
+
 public struct GitSnapshot: Sendable {
     public let root: URL
     public let branch: String
     public let head: String?
     public let changes: [GitChange]
     public let branches: [GitBranch]
+    public let reviewMode: GitReviewMode
+    public let commit: GitCommit?
 }
 
 public struct GitComparison: Sendable {
@@ -58,7 +72,7 @@ public enum GitRepository {
         init(_ message: String) { errorDescription = message }
     }
 
-    public static func scan(_ directory: URL) throws -> GitSnapshot {
+    public static func scan(_ directory: URL, mode: GitReviewMode = .workingChanges) throws -> GitSnapshot {
         let rootData = try run(["rev-parse", "--show-toplevel"], at: directory)
         // Git appends exactly one newline; spaces and newlines can be part of a path.
         guard var rootPath = String(data: rootData, encoding: .utf8), rootPath.hasSuffix("\n") else {
@@ -71,7 +85,31 @@ public enum GitRepository {
         let head = headResult.status == 0 ? String(decoding: headResult.data, as: UTF8.self).trimmingCharacters(in: .newlines) : nil
         let branchResult = try command(["symbolic-ref", "--quiet", "--short", "HEAD"], at: root)
         let branch = branchResult.status == 0 ? String(decoding: branchResult.data, as: UTF8.self).trimmingCharacters(in: .newlines) : "Detached HEAD"
-        let status = try run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames"], at: root)
+        var commit: GitCommit?
+        let changes: [GitChange]
+        if mode == .lastCommit {
+            if let head {
+                // Read real parents even in shallow clones; a missing parent must not
+                // silently turn an ordinary commit into an initial-commit comparison.
+                let raw = String(decoding: try run(["cat-file", "commit", head], at: root), as: UTF8.self)
+                let parts = raw.components(separatedBy: "\n\n")
+                let parents = parts[0].split(separator: "\n").filter { $0.hasPrefix("parent ") }.map { String($0.dropFirst(7)) }
+                let subject = parts.dropFirst().joined(separator: "\n\n").split(separator: "\n").first.map(String.init) ?? "(No commit message)"
+                commit = GitCommit(id: head, subject: subject, parents: parents)
+                var arguments = ["diff-tree", "--no-commit-id", "--name-status", "-r", "-z", "--find-renames", "--no-ext-diff", "--no-textconv"]
+                if let parent = parents.first {
+                    arguments += [parent, head, "--"]
+                } else {
+                    arguments += ["--root", head, "--"]
+                }
+                changes = try parseCommitChanges(run(arguments, at: root))
+            } else {
+                changes = []
+            }
+        } else {
+            let status = try run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames"], at: root)
+            changes = try parseStatus(status)
+        }
         let refs = try run(["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)", "refs/heads/"], at: root)
         let branches = try refs.split(separator: 10).map { record -> GitBranch in
             let fields = record.split(separator: 0)
@@ -82,7 +120,33 @@ public enum GitRepository {
             return GitBranch(id: ref, name: String(ref.dropFirst("refs/heads/".count)),
                              commit: String(decoding: fields[1], as: UTF8.self))
         }
-        return GitSnapshot(root: root, branch: branch, head: head, changes: try parseStatus(status), branches: branches)
+        return GitSnapshot(root: root, branch: branch, head: head, changes: changes, branches: branches,
+                           reviewMode: mode, commit: commit)
+    }
+
+    static func parseCommitChanges(_ data: Data) throws -> [GitChange] {
+        let records = data.split(separator: 0)
+        var changes: [GitChange] = []
+        var index = 0
+        func path(at index: Int) throws -> String {
+            guard records.indices.contains(index), let path = String(data: records[index], encoding: .utf8) else {
+                throw GitError("Git returned a filename that cannot be displayed as UTF-8.")
+            }
+            return path
+        }
+        while index < records.count {
+            guard let status = String(decoding: records[index], as: UTF8.self).first,
+                  "AMDRCT".contains(status) else { throw GitError("Git returned an invalid commit change record.") }
+            index += 1
+            let firstPath = try path(at: index)
+            index += 1
+            let isRename = status == "R" || status == "C"
+            let currentPath = try isRename ? path(at: index) : firstPath
+            if isRename { index += 1 }
+            changes.append(GitChange(path: currentPath, originalPath: isRename ? firstPath : nil,
+                                     indexStatus: status, worktreeStatus: " "))
+        }
+        return changes.sorted { $0.path < $1.path }
     }
 
     static func parseStatus(_ data: Data) throws -> [GitChange] {
@@ -124,6 +188,13 @@ public enum GitRepository {
     }
 
     public static func comparison(for change: GitChange, in snapshot: GitSnapshot, baseline: GitBranch? = nil) throws -> GitComparison {
+        if snapshot.reviewMode == .lastCommit {
+            guard let commit = snapshot.commit else { throw GitError("This repository has no commits yet.") }
+            let original = try committedFile(at: change.originalPath ?? change.path, revision: commit.parents.first, root: snapshot.root)
+            let changed = try committedFile(at: change.path, revision: commit.id, root: snapshot.root)
+            return GitComparison(original: original.text, changed: changed.text,
+                                 isIdentical: original.mode == changed.mode && original.data == changed.data)
+        }
         if change.isConflicted {
             throw GitError("This file has an unresolved merge conflict. Resolve it in your editor, then refresh.")
         }
@@ -133,17 +204,10 @@ public enum GitRepository {
         if let head = baseline?.commit ?? snapshot.head, baseline != nil || !change.isUntracked {
             // Other branches use the current path; HEAD uses the staged rename's source.
             let path = baseline == nil ? (change.originalPath ?? change.path) : change.path
-            let entry = try run(["ls-tree", "-z", head, "--", path], at: snapshot.root)
-            if !entry.isEmpty {
-                // Read by object ID so filenames are never interpreted as revision syntax.
-                let metadata = String(decoding: entry.prefix { $0 != 9 }, as: UTF8.self).split(separator: " ")
-                guard metadata.count == 3, metadata[0] == "100644" || metadata[0] == "100755", metadata[1] == "blob" else {
-                    throw GitError("Symbolic links and submodules cannot be shown as text diffs.")
-                }
-                originalMode = String(metadata[0])
-                originalData = try run(["cat-file", "blob", String(metadata[2])], at: snapshot.root, limit: TextFileReader.maximumByteCount)
-                original = try TextFileReader.decode(originalData)
-            }
+            let file = try committedFile(at: path, revision: head, root: snapshot.root)
+            originalMode = file.mode
+            originalData = file.data
+            original = file.text
         }
         try Task.checkCancellation()
         let url = snapshot.root.appendingPathComponent(change.path)
@@ -168,6 +232,19 @@ public enum GitRepository {
         }
         return GitComparison(original: original, changed: changed,
                              isIdentical: originalMode == changedMode && originalData == changedData)
+    }
+
+    private static func committedFile(at path: String, revision: String?, root: URL) throws -> (text: String, data: Data, mode: String?) {
+        guard let revision else { return ("", Data(), nil) }
+        let entry = try run(["ls-tree", "-z", revision, "--", path], at: root)
+        guard !entry.isEmpty else { return ("", Data(), nil) }
+        // Read by object ID so filenames are never interpreted as revision syntax.
+        let metadata = String(decoding: entry.prefix { $0 != 9 }, as: UTF8.self).split(separator: " ")
+        guard metadata.count == 3, metadata[0] == "100644" || metadata[0] == "100755", metadata[1] == "blob" else {
+            throw GitError("Symbolic links and submodules cannot be shown as text diffs.")
+        }
+        let data = try run(["cat-file", "blob", String(metadata[2])], at: root, limit: TextFileReader.maximumByteCount)
+        return (try TextFileReader.decode(data), data, String(metadata[0]))
     }
 
     private static func run(_ arguments: [String], at directory: URL, limit: Int = 16 * 1_024 * 1_024) throws -> Data {

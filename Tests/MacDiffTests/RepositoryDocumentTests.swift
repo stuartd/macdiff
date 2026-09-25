@@ -183,4 +183,81 @@ private func makeBaselineRepository() throws -> URL {
     #expect(document.identicalRepositoryPaths.isEmpty && !document.isCheckingRepositoryBaseline)
     #expect(document.leftText == "manual")
 }
+
+
+@Test @MainActor func lastCommitReviewWorksAfterCommittingAndRestoresWorkingBaseline() async throws {
+    let root = try makeBaselineRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    try documentGit(root, "commit", "-am", "Ready to review")
+    let document = DiffDocument()
+    document.openRepository(root)
+    try await waitForRepository(document)
+    #expect(document.repository?.changes.isEmpty == true)
+    document.selectRepositoryBaseline("refs/heads/main")
+    document.selectRepositoryReviewMode(.lastCommit)
+    try await waitForRepository(document)
+    #expect(document.repositoryReviewMode == .lastCommit)
+    #expect(document.repository?.commit?.subject == "Ready to review")
+    #expect(document.repository?.changes.map(\.path) == ["a.txt", "b.txt"])
+    #expect(document.leftText == "one" && document.rightText == "target a")
+    #expect(document.repositoryBaseline == nil && document.identicalRepositoryPaths.isEmpty)
+    #expect(document.repositoryBaselineLabel.hasPrefix("Parent"))
+    #expect(document.repositoryTargetLabel.hasPrefix("Commit"))
+    #expect(document.repositoryChangeDescription(try #require(document.selectedRepositoryChange)) == "Committed change")
+    try Data("later edit".utf8).write(to: root.appendingPathComponent("a.txt"))
+    document.refreshRepository()
+    try await waitForRepository(document)
+    #expect(document.rightText == "target a")
+    document.selectRepositoryReviewMode(.workingChanges)
+    try await waitForRepository(document)
+    #expect(document.repositoryBaselineRef == "refs/heads/main")
+    #expect(document.repository?.changes.map(\.path) == ["a.txt"])
+    #expect(document.leftText == "target a" && document.rightText == "later edit")
+    try documentGit(root, "commit", "-am", "Next commit")
+    document.selectRepositoryReviewMode(.lastCommit)
+    try await waitForRepository(document)
+    #expect(document.repository?.commit?.subject == "Next commit")
+    #expect(document.leftText == "target a" && document.rightText == "later edit")
+}
+
+@Test @MainActor func lastCommitReviewHasDistinctUnbornAndEmptyStates() async throws {
+    let root = try makeDocumentRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let document = DiffDocument()
+    document.openRepository(root)
+    document.selectRepositoryReviewMode(.lastCommit)
+    try await waitForRepository(document)
+    #expect(document.repositoryEmptyTitle == "No commits yet")
+    #expect(!document.hasBothInputs && document.repositoryMessage == nil)
+    try documentGit(root, "add", "a.txt")
+    try documentGit(root, "commit", "-m", "First")
+    document.refreshRepository()
+    try await waitForRepository(document)
+    #expect(document.repositoryBaselineLabel == "Empty base")
+    #expect(document.leftText.isEmpty && document.rightText == "one")
+    try documentGit(root, "commit", "--allow-empty", "-m", "Empty")
+    document.refreshRepository()
+    try await waitForRepository(document)
+    #expect(document.repositoryEmptyTitle == "This commit has no file changes")
+    #expect(!document.hasBothInputs && document.selectedRepositoryPath == nil)
+}
+
+@Test @MainActor func changingReviewModeCancelsObsoleteScansAndFileReads() async throws {
+    let root = try makeBaselineRepository()
+    defer { try? FileManager.default.removeItem(at: root) }
+    let document = DiffDocument()
+    document.openRepository(root)
+    try await waitForRepository(document)
+    document.selectRepositoryBaseline("refs/heads/main")
+    document.selectRepositoryReviewMode(.lastCommit)
+    document.selectRepositoryReviewMode(.workingChanges)
+    try await waitForRepository(document)
+    #expect(document.repository?.reviewMode == .workingChanges)
+    #expect(document.leftText == "target a" && document.rightText == "target a")
+    document.selectRepositoryReviewMode(.lastCommit)
+    document.clear()
+    try await Task.sleep(for: .milliseconds(300))
+    #expect(!document.isRepositoryMode && document.repositoryReviewMode == .workingChanges)
+    #expect(document.repository == nil && !document.hasBothInputs)
+}
 #endif

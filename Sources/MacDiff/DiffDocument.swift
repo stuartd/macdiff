@@ -29,6 +29,7 @@ final class DiffDocument: ObservableObject {
     }
 
     @Published private(set) var repository: GitSnapshot?
+    @Published private(set) var repositoryReviewMode: GitReviewMode = .workingChanges
     @Published private(set) var repositoryURL: URL?
     @Published private(set) var selectedRepositoryPath: String?
     @Published private(set) var isScanningRepository = false
@@ -52,10 +53,40 @@ final class DiffDocument: ObservableObject {
         repository?.changes.first { $0.path == selectedRepositoryPath }
     }
     var repositoryBaseline: GitBranch? {
-        repository?.branches.first { $0.id == repositoryBaselineRef }
+        guard repositoryReviewMode == .workingChanges else { return nil }
+        return repository?.branches.first { $0.id == repositoryBaselineRef }
     }
     var repositoryBaselineLabel: String {
-        repositoryBaseline?.name ?? (repository?.head == nil ? "Empty base" : "Last commit on \(repository?.branch ?? "HEAD")")
+        if repositoryReviewMode == .lastCommit {
+            guard let parent = repository?.commit?.parents.first else { return "Empty base" }
+            let title = (repository?.commit?.parents.count ?? 0) > 1 ? "First parent" : "Parent"
+            return "\(title) · \(parent.prefix(7))"
+        }
+        return repositoryBaseline?.name ?? (repository?.head == nil ? "Empty base" : "Last commit on \(repository?.branch ?? "HEAD")")
+    }
+    var repositoryTargetLabel: String {
+        if repositoryReviewMode == .lastCommit {
+            return repository?.commit.map { "Commit · \($0.shortID)" } ?? "Last commit"
+        }
+        return "Working tree on \(repository?.branch ?? "HEAD")"
+    }
+    var repositoryEmptyTitle: String {
+        if repositoryReviewMode == .lastCommit {
+            if repository?.head == nil { return "No commits yet" }
+            return repository?.changes.isEmpty == true ? "This commit has no file changes" : "Select a committed file"
+        }
+        return repository?.changes.isEmpty == true ? "Working tree is clean" : "Select a changed file"
+    }
+    var repositoryReviewDescription: String {
+        if repositoryReviewMode == .lastCommit {
+            guard let commit = repository?.commit else { return "There is no commit to review yet." }
+            if commit.parents.isEmpty { return "Initial commit · Compared with an empty base" }
+            return commit.parents.count > 1 ? "Merge commit · Compared with its first parent" : "Committed changes relative to the parent"
+        }
+        return "Choose a baseline above, then select a working-change file to compare."
+    }
+    func repositoryChangeDescription(_ change: GitChange) -> String {
+        repositoryReviewMode == .lastCommit ? "Committed change" : change.stagingDescription
     }
 
     private var comparisonGeneration = UUID()
@@ -245,13 +276,14 @@ final class DiffDocument: ObservableObject {
         repositoryFileGeneration = UUID()
         let generation = repositoryGeneration
         let previousPath = selectedRepositoryPath
+        let mode = repositoryReviewMode
         isScanningRepository = true
         isLoadingRepositoryFile = false
         repositoryMessage = nil
         selectedRepositoryFileIsIdentical = false
         clearInputs()
         repositoryTask = Task { [weak self] in
-            let worker = Task.detached(priority: .userInitiated) { try GitRepository.scan(url) }
+            let worker = Task.detached(priority: .userInitiated) { try GitRepository.scan(url, mode: mode) }
             do {
                 let snapshot = try await withTaskCancellationHandler {
                     try await worker.value
@@ -261,7 +293,7 @@ final class DiffDocument: ObservableObject {
                 self.repositoryURL = snapshot.root
                 self.isScanningRepository = false
                 self.repositoryTask = nil
-                if let ref = self.repositoryBaselineRef, !snapshot.branches.contains(where: { $0.id == ref }) {
+                if mode == .workingChanges, let ref = self.repositoryBaselineRef, !snapshot.branches.contains(where: { $0.id == ref }) {
                     self.repositoryBaselineRef = nil
                     self.repositoryBaselineNotice = "The comparison branch is no longer available. Comparing against \(self.repositoryBaselineLabel)."
                 }
@@ -277,6 +309,13 @@ final class DiffDocument: ObservableObject {
                 self.repositoryMessage = error.localizedDescription
             }
         }
+    }
+
+    func selectRepositoryReviewMode(_ mode: GitReviewMode) {
+        guard isRepositoryMode, mode != repositoryReviewMode else { return }
+        repositoryReviewMode = mode
+        repository = nil
+        refreshRepository()
     }
 
     func selectRepositoryPath(_ path: String?) {
@@ -325,7 +364,7 @@ final class DiffDocument: ObservableObject {
     }
 
     func selectRepositoryBaseline(_ ref: String?) {
-        guard !isScanningRepository, ref != repositoryBaselineRef,
+        guard repositoryReviewMode == .workingChanges, !isScanningRepository, ref != repositoryBaselineRef,
               ref == nil || repository?.branches.contains(where: { $0.id == ref }) == true else { return }
         repositoryBaselineRef = ref
         repositoryBaselineNotice = nil
@@ -385,6 +424,7 @@ final class DiffDocument: ObservableObject {
         repositoryGeneration = UUID()
         repositoryFileGeneration = UUID()
         repository = nil
+        repositoryReviewMode = .workingChanges
         repositoryURL = nil
         selectedRepositoryPath = nil
         isScanningRepository = false

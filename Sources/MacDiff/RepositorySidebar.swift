@@ -91,14 +91,14 @@ struct RepositorySidebar: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(document.repositoryBaselineLabel) → Working tree").fontWeight(.medium)
+                Text("\(document.repositoryBaselineLabel) → \(document.repositoryTargetLabel)").fontWeight(.medium)
                 if document.isCheckingRepositoryBaseline {
                     HStack(spacing: 6) {
                         ProgressView().controlSize(.small)
                         Text("Checking for matching files…").foregroundStyle(.secondary)
                     }
                 }
-                Text(document.selectedRepositoryChange?.stagingDescription ?? "Includes staged, unstaged, and untracked files.")
+                Text(document.selectedRepositoryChange.map { document.repositoryChangeDescription($0) } ?? (document.repositoryReviewMode == .lastCommit ? document.repositoryReviewDescription : "Includes staged, unstaged, and untracked files."))
                     .foregroundStyle(.secondary)
                 Text("Read-only · ⌘R to refresh").foregroundStyle(.secondary)
             }
@@ -109,6 +109,7 @@ struct RepositorySidebar: View {
         .font(AppTypography.body)
         .background(.bar)
         .onChange(of: document.repositoryURL) { _, _ in filter = "" }
+        .onChange(of: document.repositoryReviewMode) { _, _ in filter = "" }
     }
 
     private func changeRow(_ change: GitChange, showParent: Bool) -> some View {
@@ -133,9 +134,9 @@ struct RepositorySidebar: View {
                 .help(change.status)
         }
         .padding(.vertical, 4)
-        .help("\(change.path)\n\(change.status) · \(change.stagingDescription)")
+        .help("\(change.path)\n\(change.status) · \(document.repositoryChangeDescription(change))")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(change.path), \(change.status), \(change.stagingDescription)\(document.identicalRepositoryPaths.contains(change.path) ? ", Identical to \(document.repositoryBaselineLabel)" : "")")
+        .accessibilityLabel("\(change.path), \(change.status), \(document.repositoryChangeDescription(change))\(document.identicalRepositoryPaths.contains(change.path) ? ", Identical to \(document.repositoryBaselineLabel)" : "")")
     }
 }
 

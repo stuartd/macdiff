@@ -59,7 +59,14 @@ Choose **Open → Open Repository…** from the folder menu in the window toolba
 - Binary files, unsupported encodings, oversized files, symbolic links, submodules, and unresolved conflicts show an explanation instead of a text diff. A rename, permission change, or staged edit reversed in the working tree can have no text differences.
 - **New** (⌘N) returns to a regular two-input comparison. ClipDiff comparisons also replace the repository view.
 
-Repository review is read-only: MacDiff does not stage, commit, discard changes, or update Git’s index. Whole-branch comparisons and individual commit views are not included yet. Linked Git worktrees and detached HEAD are supported.
+Choose **Last commit** in the review switch above the file list to inspect the current branch’s latest commit, including after you have committed and pushed. The header shows the commit’s short SHA and subject; the panes compare its parent with the committed version. Both sides come from Git, so staged, unstaged, and untracked files do not affect this review. Switch back to **Working changes** to return to your chosen branch baseline.
+
+- Initial commits compare with an empty base. Repositories with no commits and commits with no file changes have distinct empty states.
+- Merge commits compare with their **first parent**, explicitly labelled in the review. This shows what the merge brought into that parent’s branch.
+- Added, deleted, renamed, and permission-only changes stay in the file list. Binary files and other unsupported inputs keep the same explanatory handling as working changes.
+- **Refresh** (⌘R) picks up a new or amended last commit and retains the selected file when it is still present. If a parent is unavailable, such as in a shallow clone, the comparison reports Git’s error.
+
+Repository review is read-only: MacDiff does not stage, commit, discard changes, or update Git’s index. Whole-branch comparisons and browsing older commits are not included yet. Linked Git worktrees and detached HEAD are supported.
 
 ## Comparing text
 

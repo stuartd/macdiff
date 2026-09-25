@@ -91,7 +91,13 @@ struct RepositorySidebar: View {
             }
             Divider()
             VStack(alignment: .leading, spacing: 8) {
-                Text("Last commit → Working tree").fontWeight(.medium)
+                Text("\(document.repositoryBaselineLabel) → Working tree").fontWeight(.medium)
+                if document.isCheckingRepositoryBaseline {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Checking for matching files…").foregroundStyle(.secondary)
+                    }
+                }
                 Text(document.selectedRepositoryChange?.stagingDescription ?? "Includes staged, unstaged, and untracked files.")
                     .foregroundStyle(.secondary)
                 Text("Read-only · ⌘R to refresh").foregroundStyle(.secondary)
@@ -114,6 +120,11 @@ struct RepositorySidebar: View {
                     Text((change.path as NSString).deletingLastPathComponent)
                         .font(AppTypography.detail).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
+                if let baseline = document.repositoryBaseline, document.identicalRepositoryPaths.contains(change.path) {
+                    Text("Identical to \(baseline.name)")
+                        .font(AppTypography.detail).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
             }
             Spacer(minLength: 2)
             Text(change.isUntracked ? "?" : String(change.status.prefix(1)))
@@ -124,7 +135,7 @@ struct RepositorySidebar: View {
         .padding(.vertical, 4)
         .help("\(change.path)\n\(change.status) · \(change.stagingDescription)")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(change.path), \(change.status), \(change.stagingDescription)")
+        .accessibilityLabel("\(change.path), \(change.status), \(change.stagingDescription)\(document.identicalRepositoryPaths.contains(change.path) ? ", Identical to \(document.repositoryBaselineLabel)" : "")")
     }
 }
 

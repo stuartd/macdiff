@@ -34,15 +34,28 @@ final class DiffDocument: ObservableObject {
     @Published private(set) var isScanningRepository = false
     @Published private(set) var isLoadingRepositoryFile = false
     @Published private(set) var repositoryMessage: String?
+    @Published private(set) var repositoryBaselineRef: String?
+    @Published private(set) var repositoryBaselineNotice: String?
+    @Published private(set) var identicalRepositoryPaths: Set<String> = []
+    @Published private(set) var selectedRepositoryFileIsIdentical = false
+    @Published private(set) var isCheckingRepositoryBaseline = false
     var isChoosingRepository = false
     private var repositoryTask: Task<Void, Never>?
     private var repositoryFileTask: Task<Void, Never>?
+    private var repositoryBaselineTask: Task<Void, Never>?
+    private var repositoryBaselineGeneration = UUID()
     private var repositoryGeneration = UUID()
     private var repositoryFileGeneration = UUID()
 
     var isRepositoryMode: Bool { repositoryURL != nil }
     var selectedRepositoryChange: GitChange? {
         repository?.changes.first { $0.path == selectedRepositoryPath }
+    }
+    var repositoryBaseline: GitBranch? {
+        repository?.branches.first { $0.id == repositoryBaselineRef }
+    }
+    var repositoryBaselineLabel: String {
+        repositoryBaseline?.name ?? (repository?.head == nil ? "Empty base" : "Last commit on \(repository?.branch ?? "HEAD")")
     }
 
     private var comparisonGeneration = UUID()
@@ -63,6 +76,7 @@ final class DiffDocument: ObservableObject {
     deinit {
         repositoryTask?.cancel()
         repositoryFileTask?.cancel()
+        repositoryBaselineTask?.cancel()
         comparisonTask?.cancel()
         comparisonWorker?.cancel()
         leftLoadTask?.cancel()
@@ -226,6 +240,7 @@ final class DiffDocument: ObservableObject {
         guard let url = repositoryURL else { return }
         repositoryTask?.cancel()
         repositoryFileTask?.cancel()
+        cancelRepositoryBaselineCheck()
         repositoryGeneration = UUID()
         repositoryFileGeneration = UUID()
         let generation = repositoryGeneration
@@ -233,6 +248,7 @@ final class DiffDocument: ObservableObject {
         isScanningRepository = true
         isLoadingRepositoryFile = false
         repositoryMessage = nil
+        selectedRepositoryFileIsIdentical = false
         clearInputs()
         repositoryTask = Task { [weak self] in
             let worker = Task.detached(priority: .userInitiated) { try GitRepository.scan(url) }
@@ -245,6 +261,11 @@ final class DiffDocument: ObservableObject {
                 self.repositoryURL = snapshot.root
                 self.isScanningRepository = false
                 self.repositoryTask = nil
+                if let ref = self.repositoryBaselineRef, !snapshot.branches.contains(where: { $0.id == ref }) {
+                    self.repositoryBaselineRef = nil
+                    self.repositoryBaselineNotice = "The comparison branch is no longer available. Comparing against \(self.repositoryBaselineLabel)."
+                }
+                self.checkRepositoryBaseline()
                 let path = snapshot.changes.first { $0.path == previousPath }?.path ?? snapshot.changes.first?.path
                 self.selectRepositoryPath(path)
             } catch {
@@ -263,14 +284,17 @@ final class DiffDocument: ObservableObject {
         repositoryFileGeneration = UUID()
         let generation = repositoryFileGeneration
         selectedRepositoryPath = path
+        selectedRepositoryFileIsIdentical = false
         repositoryMessage = nil
         isLoadingRepositoryFile = false
         clearInputs()
         guard let repository, let change = repository.changes.first(where: { $0.path == path }) else { return }
+        let baseline = repositoryBaseline
+        identicalRepositoryPaths.remove(change.path)
         isLoadingRepositoryFile = true
         repositoryFileTask = Task { [weak self] in
             let worker = Task.detached(priority: .userInitiated) {
-                try GitRepository.comparison(for: change, in: repository)
+                try GitRepository.comparison(for: change, in: repository, baseline: baseline)
             }
             do {
                 let pair = try await withTaskCancellationHandler {
@@ -283,19 +307,79 @@ final class DiffDocument: ObservableObject {
                 self.rightText = pair.changed
                 self.hasLeft = true
                 self.hasRight = true
+                self.selectedRepositoryFileIsIdentical = baseline != nil && pair.isIdentical
+                if self.selectedRepositoryFileIsIdentical {
+                    self.identicalRepositoryPaths.insert(change.path)
+                } else {
+                    self.identicalRepositoryPaths.remove(change.path)
+                }
                 self.scheduleComparison()
             } catch {
                 guard !Task.isCancelled, let self, self.repositoryFileGeneration == generation else { return }
                 self.isLoadingRepositoryFile = false
                 self.repositoryFileTask = nil
                 self.repositoryMessage = error.localizedDescription
+                self.identicalRepositoryPaths.remove(change.path)
             }
+        }
+    }
+
+    func selectRepositoryBaseline(_ ref: String?) {
+        guard !isScanningRepository, ref != repositoryBaselineRef,
+              ref == nil || repository?.branches.contains(where: { $0.id == ref }) == true else { return }
+        repositoryBaselineRef = ref
+        repositoryBaselineNotice = nil
+        checkRepositoryBaseline()
+        selectRepositoryPath(selectedRepositoryPath)
+    }
+
+    private func cancelRepositoryBaselineCheck() {
+        repositoryBaselineTask?.cancel()
+        repositoryBaselineTask = nil
+        repositoryBaselineGeneration = UUID()
+        identicalRepositoryPaths = []
+        isCheckingRepositoryBaseline = false
+    }
+
+    private func checkRepositoryBaseline() {
+        cancelRepositoryBaselineCheck()
+        guard let repository, let baseline = repositoryBaseline, !repository.changes.isEmpty else { return }
+        let generation = repositoryBaselineGeneration
+        isCheckingRepositoryBaseline = true
+        repositoryBaselineTask = Task { [weak self] in
+            let worker = Task.detached(priority: .utility) {
+                var identical: Set<String> = []
+                for change in repository.changes {
+                    try Task.checkCancellation()
+                    // Unsupported files stay listed and show their explanation when selected.
+                    if let pair = try? GitRepository.comparison(for: change, in: repository, baseline: baseline), pair.isIdentical {
+                        identical.insert(change.path)
+                    }
+                }
+                return identical
+            }
+            let matches = try? await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: { worker.cancel() }
+            guard !Task.isCancelled, let self, self.repositoryBaselineGeneration == generation else { return }
+            self.identicalRepositoryPaths = matches ?? []
+            // The selected file may have been read more recently than the background pass.
+            if let path = self.selectedRepositoryPath, !self.isLoadingRepositoryFile {
+                if self.selectedRepositoryFileIsIdentical {
+                    self.identicalRepositoryPaths.insert(path)
+                } else {
+                    self.identicalRepositoryPaths.remove(path)
+                }
+            }
+            self.isCheckingRepositoryBaseline = false
+            self.repositoryBaselineTask = nil
         }
     }
 
     private func closeRepository() {
         repositoryTask?.cancel()
         repositoryFileTask?.cancel()
+        cancelRepositoryBaselineCheck()
         repositoryTask = nil
         repositoryFileTask = nil
         repositoryGeneration = UUID()
@@ -306,6 +390,9 @@ final class DiffDocument: ObservableObject {
         isScanningRepository = false
         isLoadingRepositoryFile = false
         repositoryMessage = nil
+        repositoryBaselineRef = nil
+        repositoryBaselineNotice = nil
+        selectedRepositoryFileIsIdentical = false
     }
 
     func moveChange(_ delta: Int) {

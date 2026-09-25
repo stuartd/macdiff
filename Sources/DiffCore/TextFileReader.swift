@@ -33,6 +33,10 @@ public enum TextFileReader {
     }
 
     public static func read(_ url: URL) throws -> String {
+        try decode(readData(url))
+    }
+
+    static func readData(_ url: URL) throws -> Data {
         guard url.isFileURL else { throw ReadError.notRegularFile }
         #if os(macOS)
         let scopedAccess = url.startAccessingSecurityScopedResource()
@@ -53,7 +57,8 @@ public enum TextFileReader {
             guard let chunk = try handle.read(upToCount: min(65_536, remaining)), !chunk.isEmpty else { break }
             data.append(chunk)
         }
-        return try decode(data)
+        guard data.count <= maximumByteCount else { throw ReadError.tooLarge }
+        return data
     }
 
     public static func decode(_ data: Data) throws -> String {

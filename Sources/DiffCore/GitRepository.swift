@@ -31,16 +31,25 @@ public struct GitChange: Identifiable, Equatable, Sendable {
     }
 }
 
+public struct GitBranch: Identifiable, Equatable, Sendable {
+    public let id: String
+    public let name: String
+    public let commit: String
+}
+
 public struct GitSnapshot: Sendable {
     public let root: URL
     public let branch: String
     public let head: String?
     public let changes: [GitChange]
+    public let branches: [GitBranch]
 }
 
 public struct GitComparison: Sendable {
     public let original: String
     public let changed: String
+    /// Exact bytes, presence, and executable mode match at the compared paths.
+    public let isIdentical: Bool
 }
 
 public enum GitRepository {
@@ -63,7 +72,17 @@ public enum GitRepository {
         let branchResult = try command(["symbolic-ref", "--quiet", "--short", "HEAD"], at: root)
         let branch = branchResult.status == 0 ? String(decoding: branchResult.data, as: UTF8.self).trimmingCharacters(in: .newlines) : "Detached HEAD"
         let status = try run(["status", "--porcelain=v1", "-z", "--untracked-files=all", "--ignore-submodules=none", "--renames"], at: root)
-        return GitSnapshot(root: root, branch: branch, head: head, changes: try parseStatus(status))
+        let refs = try run(["for-each-ref", "--sort=refname", "--format=%(refname)%00%(objectname)", "refs/heads/"], at: root)
+        let branches = try refs.split(separator: 10).map { record -> GitBranch in
+            let fields = record.split(separator: 0)
+            guard fields.count == 2, let ref = String(data: fields[0], encoding: .utf8),
+                  ref.hasPrefix("refs/heads/") else {
+                throw GitError("Git returned a branch name that cannot be displayed as UTF-8.")
+            }
+            return GitBranch(id: ref, name: String(ref.dropFirst("refs/heads/".count)),
+                             commit: String(decoding: fields[1], as: UTF8.self))
+        }
+        return GitSnapshot(root: root, branch: branch, head: head, changes: try parseStatus(status), branches: branches)
     }
 
     static func parseStatus(_ data: Data) throws -> [GitChange] {
@@ -104,13 +123,16 @@ public enum GitRepository {
         }.sorted { $0.path < $1.path }
     }
 
-    public static func comparison(for change: GitChange, in snapshot: GitSnapshot) throws -> GitComparison {
+    public static func comparison(for change: GitChange, in snapshot: GitSnapshot, baseline: GitBranch? = nil) throws -> GitComparison {
         if change.isConflicted {
             throw GitError("This file has an unresolved merge conflict. Resolve it in your editor, then refresh.")
         }
         var original = ""
-        if let head = snapshot.head, !change.isUntracked {
-            let path = change.originalPath ?? change.path
+        var originalData = Data()
+        var originalMode: String?
+        if let head = baseline?.commit ?? snapshot.head, baseline != nil || !change.isUntracked {
+            // Other branches use the current path; HEAD uses the staged rename's source.
+            let path = baseline == nil ? (change.originalPath ?? change.path) : change.path
             let entry = try run(["ls-tree", "-z", head, "--", path], at: snapshot.root)
             if !entry.isEmpty {
                 // Read by object ID so filenames are never interpreted as revision syntax.
@@ -118,12 +140,16 @@ public enum GitRepository {
                 guard metadata.count == 3, metadata[0] == "100644" || metadata[0] == "100755", metadata[1] == "blob" else {
                     throw GitError("Symbolic links and submodules cannot be shown as text diffs.")
                 }
-                original = try TextFileReader.decode(run(["cat-file", "blob", String(metadata[2])], at: snapshot.root, limit: TextFileReader.maximumByteCount))
+                originalMode = String(metadata[0])
+                originalData = try run(["cat-file", "blob", String(metadata[2])], at: snapshot.root, limit: TextFileReader.maximumByteCount)
+                original = try TextFileReader.decode(originalData)
             }
         }
         try Task.checkCancellation()
         let url = snapshot.root.appendingPathComponent(change.path)
         var changed = ""
+        var changedData = Data()
+        var changedMode: String?
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
             let rootPath = snapshot.root.resolvingSymlinksInPath().path + "/"
@@ -133,11 +159,15 @@ public enum GitRepository {
             guard attributes[.type] as? FileAttributeType == .typeRegular else {
                 throw GitError("Symbolic links, directories, and submodules cannot be shown as text diffs.")
             }
-            changed = try TextFileReader.read(url)
+            let permissions = (attributes[.posixPermissions] as? NSNumber)?.intValue ?? 0
+            changedMode = permissions & 0o100 == 0 ? "100644" : "100755"
+            changedData = try TextFileReader.readData(url)
+            changed = try TextFileReader.decode(changedData)
         } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
             // A deleted file has an explicitly empty working-tree side.
         }
-        return GitComparison(original: original, changed: changed)
+        return GitComparison(original: original, changed: changed,
+                             isIdentical: originalMode == changedMode && originalData == changedData)
     }
 
     private static func run(_ arguments: [String], at directory: URL, limit: Int = 16 * 1_024 * 1_024) throws -> Data {

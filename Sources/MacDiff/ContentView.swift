@@ -16,6 +16,10 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if document.isRepositoryMode {
+                repositoryReviewHeader
+                Divider()
+            }
             HStack(spacing: 0) {
                 if document.isRepositoryMode {
                     RepositorySidebar(document: document)
@@ -63,6 +67,41 @@ struct ContentView: View {
         }
     }
 
+    private var repositoryReviewHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 20) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Working changes on \(document.repository?.branch ?? "…")")
+                        .font(AppTypography.heading)
+                        .lineLimit(1).truncationMode(.middle)
+                    Text("Only files changed in your working tree")
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Picker("Compare against", selection: Binding(
+                    get: { document.repositoryBaselineRef },
+                    set: { document.selectRepositoryBaseline($0) }
+                )) {
+                    Text(document.repository?.head == nil ? "Empty base" : "Last commit on \(document.repository?.branch ?? "HEAD")")
+                        .tag(nil as String?)
+                    Divider()
+                    ForEach(document.repository?.branches ?? []) { branch in
+                        Text(branch.name).tag(Optional(branch.id))
+                    }
+                }
+                .pickerStyle(.menu)
+                .frame(maxWidth: 360)
+                .disabled(document.isScanningRepository || document.repository == nil)
+                .help("Choose a baseline for all working changes. The file list stays the same.")
+            }
+            if let notice = document.repositoryBaselineNotice {
+                Text(notice).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 16).padding(.vertical, 12)
+        .background(.bar)
+    }
+
     private var comparisonPane: some View {
         VStack(spacing: 0) {
             HStack(spacing: 0) {
@@ -87,12 +126,21 @@ struct ContentView: View {
                     } else if let message = document.repositoryMessage {
                         ContentUnavailableView("Unable to show comparison", systemImage: "doc.badge.ellipsis", description: Text(message))
                     } else if document.hasBothInputs {
-                        diffView
+                        VStack(spacing: 0) {
+                            if let baseline = document.repositoryBaseline, document.selectedRepositoryFileIsIdentical {
+                                Label("This file matches \(baseline.name)", systemImage: "equal.circle")
+                                    .foregroundStyle(.secondary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(12)
+                                Divider()
+                            }
+                            diffView
+                        }
                     } else if document.isRepositoryMode {
                         ContentUnavailableView(
                             document.repository?.changes.isEmpty == true ? "Working tree is clean" : "Select a changed file",
                             systemImage: document.repository?.changes.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass",
-                            description: Text("Compare the last commit with the files in your working tree."))
+                            description: Text("Choose a baseline above, then select a working-change file to compare."))
                     } else {
                         welcome
                     }
@@ -109,15 +157,17 @@ struct ContentView: View {
     private func repositoryHeader(onLeft: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(onLeft ? (document.repository?.head == nil ? "EMPTY BASE" : "LAST COMMIT") : "WORKING TREE")
+                Text(onLeft ? document.repositoryBaselineLabel : "Working tree on \(document.repository?.branch ?? "HEAD")")
                     .font(AppTypography.body.weight(.semibold))
+                    .lineLimit(1).truncationMode(.middle)
+                    .help(onLeft ? document.repositoryBaselineLabel : "Working tree on \(document.repository?.branch ?? "HEAD")")
                 Spacer()
                 Button { copy(onLeft: onLeft) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless)
                     .disabled(!document.hasBothInputs)
                     .help(onLeft ? "Copy committed text" : "Copy working-tree text")
             }
-            Text((onLeft ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
+            Text((onLeft && document.repositoryBaseline == nil ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
                 .font(AppTypography.heading)
                 .lineLimit(1).truncationMode(.middle)
                 .help(document.selectedRepositoryPath ?? "")
@@ -289,7 +339,7 @@ struct ContentView: View {
                     if document.isComparing {
                         ProgressView("Comparing…").padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                     } else if document.rows.isEmpty {
-                        ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.isRepositoryMode ? "Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
+                        ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.selectedRepositoryFileIsIdentical ? "There is no text to display." : document.isRepositoryMode ? "A file may be absent or empty, or Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
                     }
                 }
             }
@@ -320,6 +370,9 @@ struct ContentView: View {
         if !document.hasLeft { return "Add the original text" }
         if !document.hasRight { return "Add the changed text" }
         if document.isComparing { return "Comparing…" }
+        if let baseline = document.repositoryBaseline, document.selectedRepositoryFileIsIdentical {
+            return "Identical to \(baseline.name)"
+        }
         if document.changeStarts.isEmpty {
             return document.ignoreWhitespace ? "No differences ignoring spacing" : (document.isRepositoryMode ? "No text differences · Git status may reflect staging, a rename, or permissions" : "No differences")
         }

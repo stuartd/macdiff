@@ -171,3 +171,83 @@ private final class RepositoryFixture {
     #expect(directory.isUntracked)
     #expect(throws: (any Error).self) { try GitRepository.comparison(for: directory, in: snapshot) }
 }
+
+@Test func branchBaselineKeepsWorkingScopeAndReadsUntrackedPathsFromBranch() throws {
+    let fixture = try RepositoryFixture()
+    try fixture.write("edited", "base")
+    try fixture.write("unrelated", "base")
+    try fixture.commit()
+    try fixture.git("checkout", "-b", "feature-b")
+    try fixture.git("checkout", "main")
+    try fixture.write("edited", "matches main")
+    try fixture.write("unrelated", "main only change")
+    try fixture.write("new", "also on main")
+    try fixture.commit()
+    try fixture.git("checkout", "feature-b")
+    try fixture.write("edited", "matches main")
+    try fixture.write("new", "also on main")
+    let index = fixture.root.appendingPathComponent(".git/index")
+    let before = try Data(contentsOf: index)
+    let snapshot = try GitRepository.scan(fixture.root)
+    #expect(snapshot.branches.map(\.name) == ["feature-b", "main"])
+    #expect(snapshot.changes.map(\.path) == ["edited", "new"])
+    let baseline = try #require(snapshot.branches.first { $0.name == "main" })
+    for change in snapshot.changes {
+        let pair = try GitRepository.comparison(for: change, in: snapshot, baseline: baseline)
+        #expect(pair.original == pair.changed)
+        #expect(pair.isIdentical)
+        let defaultPair = try GitRepository.comparison(for: change, in: snapshot)
+        #expect(!defaultPair.isIdentical)
+    }
+    // A moving branch cannot change the meaning of an already loaded snapshot.
+    try fixture.git("branch", "-f", "main", "feature-b")
+    let pinned = try GitRepository.comparison(for: #require(snapshot.changes.first), in: snapshot, baseline: baseline)
+    #expect(pinned.isIdentical)
+    #expect(try Data(contentsOf: index) == before)
+    #expect(try fixture.git("branch", "--show-current") == Data("feature-b\n".utf8))
+}
+
+@Test func branchBaselineUsesCurrentRenamePathAndHandlesMissingFiles() throws {
+    let fixture = try RepositoryFixture()
+    try fixture.write("old", "rename me")
+    try fixture.write("deleted", "delete me")
+    try fixture.commit()
+    try fixture.git("branch", "feature-b")
+    try fixture.git("mv", "old", "new")
+    try fixture.git("rm", "deleted")
+    try fixture.commit()
+    try fixture.git("checkout", "feature-b")
+    try fixture.git("mv", "old", "new")
+    try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("deleted"))
+    try fixture.write("empty-added", "")
+    let snapshot = try GitRepository.scan(fixture.root)
+    let baseline = try #require(snapshot.branches.first { $0.name == "main" })
+    let renamed = try #require(snapshot.changes.first { $0.path == "new" })
+    #expect(renamed.originalPath == "old")
+    #expect(try GitRepository.comparison(for: renamed, in: snapshot, baseline: baseline).isIdentical)
+    #expect(try GitRepository.comparison(for: renamed, in: snapshot).original == "rename me")
+    let absent = try GitRepository.comparison(for: #require(snapshot.changes.first { $0.path == "deleted" }), in: snapshot, baseline: baseline)
+    #expect(absent.isIdentical && absent.original.isEmpty && absent.changed.isEmpty)
+    let emptyAdded = try GitRepository.comparison(for: #require(snapshot.changes.first { $0.path == "empty-added" }), in: snapshot, baseline: baseline)
+    #expect(!emptyAdded.isIdentical)
+}
+
+@Test func identicalBaselineRequiresMatchingBytesAndMode() throws {
+    let fixture = try RepositoryFixture()
+    try fixture.write("mode", "same")
+    try fixture.write("encoding", "same")
+    try fixture.write("deleted-empty", "")
+    try fixture.commit()
+    try fixture.git("branch", "other")
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: fixture.root.appendingPathComponent("mode").path)
+    try Data([0xEF, 0xBB, 0xBF] + Array("same".utf8)).write(to: fixture.root.appendingPathComponent("encoding"))
+    try FileManager.default.removeItem(at: fixture.root.appendingPathComponent("deleted-empty"))
+    let snapshot = try GitRepository.scan(fixture.root)
+    let baseline = try #require(snapshot.branches.first { $0.name == "other" })
+    #expect(snapshot.changes.count == 3)
+    for change in snapshot.changes {
+        let pair = try GitRepository.comparison(for: change, in: snapshot, baseline: baseline)
+        #expect(pair.original == pair.changed)
+        #expect(!pair.isIdentical)
+    }
+}

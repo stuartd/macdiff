@@ -10,7 +10,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "DiffCore"),
-        .executableTarget(name: "MacDiff", dependencies: ["DiffCore"]),
+        .executableTarget(name: "MacDiff", dependencies: ["DiffCore"], plugins: ["BuildMetadataPlugin"]),
+        .plugin(name: "BuildMetadataPlugin", capability: .buildTool()),
         .testTarget(name: "DiffCoreTests", dependencies: ["DiffCore"]),
         .testTarget(name: "MacDiffTests", dependencies: ["MacDiff"])
     ]

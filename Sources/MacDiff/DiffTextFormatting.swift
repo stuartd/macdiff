@@ -1,25 +1,22 @@
 #if os(macOS)
-import SwiftUI
+import AppKit
 
 enum DiffTextFormatting {
-    static func attributed(_ text: String, highlights: [Range<Int>], color: Color) -> AttributedString {
-        var result = AttributedString()
+    static func highlight(_ text: String, ranges: [Range<Int>], color: NSColor,
+                          in result: NSMutableAttributedString, offset: Int = 0) {
         var cursor = text.startIndex
-        var offset = 0
-        // Advance through the source once. Expand tabs only after slicing, since
-        // highlight offsets refer to original graphemes rather than display columns.
-        for range in highlights {
-            let start = text.index(cursor, offsetBy: range.lowerBound - offset)
+        var characterOffset = 0
+        // Advance once through graphemes, converting to TextKit's UTF-16 ranges.
+        // Tabs remain source characters and are laid out by the text container.
+        for range in ranges {
+            let start = text.index(cursor, offsetBy: range.lowerBound - characterOffset)
             let end = text.index(start, offsetBy: range.count)
-            result += AttributedString(text[cursor..<start].replacingOccurrences(of: "\t", with: "    "))
-            var changed = AttributedString(text[start..<end].replacingOccurrences(of: "\t", with: "    "))
-            changed.backgroundColor = color.opacity(0.28)
-            result += changed
+            var utf16Range = NSRange(start..<end, in: text)
+            utf16Range.location += offset
+            result.addAttribute(.backgroundColor, value: color.withAlphaComponent(0.28), range: utf16Range)
             cursor = end
-            offset = range.upperBound
+            characterOffset = range.upperBound
         }
-        result += AttributedString(text[cursor...].replacingOccurrences(of: "\t", with: "    "))
-        return result
     }
 }
 #endif

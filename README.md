@@ -20,6 +20,8 @@ open dist/MacDiff.app
 
 The script builds a release app for the current Mac’s architecture and signs it for local use. Pass `debug` for a debug build. The bundle is intended for local development; it is not notarized for distribution.
 
+**MacDiff → About MacDiff** shows the short Git commit hash and build date and time (UTC). A Swift package build plugin generates these constants before compilation, so `swift build`, `swift run`, Xcode package builds, and CI builds all include them without relying on the app packaging script. The values travel with the executable. The hash comes from the checked-out commit, with `GITHUB_SHA` as a fallback for source archives in GitHub Actions; without either, it shows “Unavailable”. The timestamp records this build invocation, not the commit date or launch time.
+
 To install the built app, quit MacDiff, then copy `dist/MacDiff.app` into `/Applications` using Finder, replacing the previous copy if present. Select the installed app in ClipDiff so future comparisons use that copy.
 
 The build converts `icon/icon.png` into the macOS app icon, including standard and Retina sizes. To update the icon, replace that square PNG (at least 1024 × 1024 pixels) and rebuild the app bundle.
@@ -73,13 +75,14 @@ Repository review is read-only: MacDiff does not stage, commit, discard changes,
 - Use **File → Open Original… / Open Changed…**, the toolbar’s folder menu, or the **…** menu in each pane header to open files. You can also drop one file onto each text pane or header. Dropping onto a pane loads that side, including before a comparison starts and in the blank space below short files.
 - Use the **Edit** menu or a pane’s **…** menu to **Paste** text into either side or **Edit** a snippet. An explicitly empty input can be compared too.
 - **Copy Text** in each pane’s **…** menu (or the **Edit** menu) copies the complete source text, without line numbers or display formatting. Repository headers have a copy icon.
+- Drag to select any range of text within either diff pane, across lines and wrapped rows. Shift-click and keyboard selection work too; **⌘A** selects that side and **⌘C** copies the selection. Copied selections preserve source tabs and line endings, without line numbers, change markers, or alignment gaps.
 - **Comparison → Swap Inputs** reverses the two inputs; **File → New** (⌘N) clears both inputs and starts a fresh comparison.
 - Previous/next navigation jumps between groups of changed lines. The current group’s first line has an accent outline.
 - Modified lines use stronger red/green shading on the changed text within each line. Matching text keeps the subtle line background, and **Ignore spacing** also applies to these highlights.
 - **Ignore Spacing**, in the **Comparison** menu or the toolbar’s comparison options, trims leading/trailing whitespace and collapses runs of whitespace within a line. Line breaks still matter.
 - **View → Appearance** offers system, light, and dark modes; the **View** menu also has text-size controls for comparisons, input previews, and the text editor (15-point default). Sidebar and status text use a separate readable interface size. Colours are subdued, and additions/removals also have `+`/`−` markers.
 
-The panes scroll together and each occupy half the window. Long lines wrap, with both sides of each row kept at the same height so matching lines remain aligned. Tabs display as four spaces; copying preserves the original tabs.
+The panes scroll together and each occupy half the window. Long lines wrap, with both sides of each row kept at the same height so matching lines remain aligned. Tabs use four-column stops; copying preserves the original tabs.
 
 When both files have the same name, the headers include enough parent folders to distinguish their paths. Hover over either label to see the full path.
 

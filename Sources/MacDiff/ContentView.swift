@@ -335,33 +335,16 @@ struct ContentView: View {
     }
 
     private var diffView: some View {
-        GeometryReader { geometry in
-            let paneWidth = max(0, (geometry.size.width - 1) / 2)
-            ScrollViewReader { proxy in
-                ScrollView(.vertical) {
-                    LazyVStack(spacing: 0) {
-                        ForEach(document.rows) { row in
-                            DiffRowView(row: row, paneWidth: paneWidth, fontSize: fontSize, selected: row.id == document.selectedRowID)
-                                .id(row.id)
-                        }
-                    }
-                    .frame(width: paneWidth * 2 + 1, alignment: .topLeading)
-                }
-                .onChange(of: document.selectedRowID) { _, id in
-                    if let id { proxy.scrollTo(id, anchor: .center) }
-                }
-                .onChange(of: document.isComparing) { _, comparing in
-                    if !comparing, let id = document.selectedRowID { proxy.scrollTo(id, anchor: .center) }
-                }
-                .overlay {
-                    if document.isComparing {
-                        ProgressView("Comparing…").padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
-                    } else if document.rows.isEmpty {
-                        ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.selectedRepositoryFileIsIdentical ? "There is no text to display." : document.isRepositoryMode ? "A file may be absent or empty, or Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
-                    }
+        SelectableDiffView(rows: document.rows, leftText: document.leftText, rightText: document.rightText,
+                           fontSize: fontSize, selectedRowID: document.selectedRowID,
+                           isComparing: document.isComparing)
+            .overlay {
+                if document.isComparing {
+                    ProgressView("Comparing…").padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
+                } else if document.rows.isEmpty {
+                    ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.selectedRepositoryFileIsIdentical ? "There is no text to display." : document.isRepositoryMode ? "A file may be absent or empty, or Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
                 }
             }
-        }
     }
 
     private var statusBar: some View {
@@ -501,74 +484,4 @@ private struct TextInputEditor: View {
 
 }
 
-private struct DiffRowView: View {
-    let row: DiffRow
-    let paneWidth: CGFloat
-    let fontSize: CGFloat
-    let selected: Bool
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            side(number: row.oldNumber, text: row.oldText, onLeft: true)
-            Color.clear.frame(width: 1, height: 1)
-            side(number: row.newNumber, text: row.newText, onLeft: false)
-        }
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(minHeight: fontSize + 12)
-        .background {
-            HStack(spacing: 0) {
-                background(true).frame(width: paneWidth)
-                Color(nsColor: .separatorColor).frame(width: 1)
-                background(false).frame(width: paneWidth)
-            }
-        }
-        .overlay(alignment: .leading) {
-            if selected { Rectangle().fill(Color.accentColor).frame(width: 3) }
-        }
-        .overlay {
-            if selected { Rectangle().strokeBorder(Color.accentColor.opacity(0.7), lineWidth: 1) }
-        }
-    }
-
-    private func side(number: Int?, text: String?, onLeft: Bool) -> some View {
-        HStack(alignment: .top, spacing: 0) {
-            Text(number.map(String.init) ?? "")
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(width: max(52, fontSize * 3.9), alignment: .trailing)
-                .padding(.trailing, 10)
-            Text(marker(onLeft)).foregroundStyle(markerColor(onLeft)).frame(width: 18)
-            Text(DiffTextFormatting.attributed(text ?? " ",
-                highlights: onLeft ? row.oldHighlights : row.newHighlights,
-                color: markerColor(onLeft)))
-                .fixedSize(horizontal: false, vertical: true)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .font(.system(size: fontSize, design: .monospaced))
-        .padding(.vertical, 5)
-        .padding(.trailing, 8)
-        .frame(width: paneWidth, alignment: .topLeading)
-    }
-
-    private func marker(_ onLeft: Bool) -> String {
-        switch row.kind {
-        case .added: return onLeft ? "" : "+"
-        case .removed: return onLeft ? "−" : ""
-        case .modified: return onLeft ? "−" : "+"
-        case .unchanged: return ""
-        }
-    }
-
-    private func markerColor(_ onLeft: Bool) -> Color { onLeft ? .red : .green }
-
-    private func background(_ onLeft: Bool) -> Color {
-        switch row.kind {
-        case .added: return onLeft ? .clear : .green.opacity(0.12)
-        case .removed: return onLeft ? .red.opacity(0.12) : .clear
-        case .modified: return onLeft ? .red.opacity(0.12) : .green.opacity(0.12)
-        case .unchanged: return .clear
-        }
-    }
-}
 #endif

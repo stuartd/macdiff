@@ -1,16 +1,21 @@
 #if os(macOS)
-import SwiftUI
+import AppKit
 import Testing
 @testable import MacDiff
 
 @Test func formattingMapsHighlightsAfterTabsAndUnicode() {
     let text = "\t👩🏽‍💻 e\u{301}\t30"
-    let formatted = DiffTextFormatting.attributed(text, highlights: [5..<6], color: .red)
-    #expect(String(formatted.characters) == "    👩🏽‍💻 e\u{301}    30")
-    let highlighted = formatted.runs.filter { $0.backgroundColor != nil }
-    #expect(highlighted.count == 1)
-    #expect(highlighted.map { String(formatted[$0.range].characters) } == ["3"])
-    let tab = DiffTextFormatting.attributed("a\tb", highlights: [1..<2], color: .green)
-    #expect(tab.runs.filter { $0.backgroundColor != nil }.map { String(tab[$0.range].characters) } == ["    "])
+    let formatted = NSMutableAttributedString(string: text)
+    DiffTextFormatting.highlight(text, ranges: [5..<6], color: .red, in: formatted)
+    #expect(formatted.string == text)
+    var highlighted: [String] = []
+    formatted.enumerateAttribute(.backgroundColor, in: NSRange(location: 0, length: formatted.length)) { value, range, _ in
+        if value != nil { highlighted.append((formatted.string as NSString).substring(with: range)) }
+    }
+    #expect(highlighted == ["3"])
+    let tab = NSMutableAttributedString(string: "a\tb")
+    DiffTextFormatting.highlight(tab.string, ranges: [1..<2], color: .green, in: tab)
+    #expect(tab.attribute(.backgroundColor, at: 1, effectiveRange: nil) != nil)
+    #expect(tab.string == "a\tb")
 }
 #endif

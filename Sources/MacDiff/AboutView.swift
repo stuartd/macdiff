@@ -16,18 +16,20 @@ struct AboutView: View {
                     .font(.system(size: 26, weight: .semibold))
             }
 
-            VStack(spacing: 4) {
-                Text("© Stuart Dunkeld \(BuildMetadata.date.prefix(4))")
-                Text("Rose Hill Solutions")
-            }
-            .font(.system(size: 14))
-            .multilineTextAlignment(.center)
-
             Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+                GridRow {
+                    Text("Developer").foregroundStyle(.secondary)
+                    Text("Stuart Dunkeld")
+                }
+                GridRow {
+                    Text("Company").foregroundStyle(.secondary)
+                    Text("Rose Hill Solutions")
+                }
                 GridRow {
                     Text("Commit").foregroundStyle(.secondary)
                     Text(BuildMetadata.commit)
                 }
+                .padding(.top, 8)
                 GridRow {
                     Text("Built").foregroundStyle(.secondary)
                     Text(BuildMetadata.date)
@@ -40,9 +42,13 @@ struct AboutView: View {
             .font(.system(size: 14))
             .textSelection(.enabled)
 
+            Text("© \(BuildMetadata.date.prefix(4)) Stuart Dunkeld")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
         .padding(24)
-        .frame(width: 364, height: 324)
+        .frame(width: 364, height: 364)
         .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
     }
 }

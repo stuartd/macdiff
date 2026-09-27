@@ -92,14 +92,6 @@ struct RepositorySidebar: View {
             Divider()
             VStack(alignment: .leading, spacing: 8) {
                 Text("\(document.repositoryBaselineLabel) → \(document.repositoryTargetLabel)").fontWeight(.medium)
-                if document.isCheckingRepositoryBaseline {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Checking for matching files…").foregroundStyle(.secondary)
-                    }
-                }
-                Text(document.selectedRepositoryChange.map { document.repositoryChangeDescription($0) } ?? (document.repositoryReviewMode == .lastCommit ? document.repositoryReviewDescription : "Includes staged, unstaged, and untracked files."))
-                    .foregroundStyle(.secondary)
                 Text("Read-only · ⌘R to refresh").foregroundStyle(.secondary)
             }
             .font(AppTypography.body)
@@ -109,7 +101,7 @@ struct RepositorySidebar: View {
         .font(AppTypography.body)
         .background(.bar)
         .onChange(of: document.repositoryURL) { _, _ in filter = "" }
-        .onChange(of: document.repositoryReviewMode) { _, _ in filter = "" }
+        .onChange(of: document.repository?.commit?.id) { _, _ in filter = "" }
     }
 
     private func changeRow(_ change: GitChange, showParent: Bool) -> some View {
@@ -121,22 +113,17 @@ struct RepositorySidebar: View {
                     Text((change.path as NSString).deletingLastPathComponent)
                         .font(AppTypography.detail).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
                 }
-                if let baseline = document.repositoryBaseline, document.identicalRepositoryPaths.contains(change.path) {
-                    Text("Identical to \(baseline.name)")
-                        .font(AppTypography.detail).foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.middle)
-                }
             }
             Spacer(minLength: 2)
-            Text(change.isUntracked ? "?" : String(change.status.prefix(1)))
+            Text(String(change.status.prefix(1)))
                 .font(AppTypography.body.monospaced().weight(.semibold))
-                .foregroundStyle(change.isConflicted ? Color.red : change.status == "Deleted" ? .red : change.status == "Added" || change.isUntracked ? .green : .orange)
+                .foregroundStyle(change.status == "Deleted" ? Color.red : change.status == "Added" ? .green : .orange)
                 .help(change.status)
         }
         .padding(.vertical, 4)
-        .help("\(change.path)\n\(change.status) · \(document.repositoryChangeDescription(change))")
+        .help("\(change.path)\n\(change.status) · Committed change")
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(change.path), \(change.status), \(document.repositoryChangeDescription(change))\(document.identicalRepositoryPaths.contains(change.path) ? ", Identical to \(document.repositoryBaselineLabel)" : "")")
+        .accessibilityLabel("\(change.path), \(change.status), Committed change")
     }
 }
 

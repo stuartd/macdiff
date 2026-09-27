@@ -68,53 +68,15 @@ struct ContentView: View {
     }
 
     private var repositoryReviewHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Picker("Review", selection: Binding(
-                get: { document.repositoryReviewMode },
-                set: { document.selectRepositoryReviewMode($0) }
-            )) {
-                Text("Working changes").tag(GitReviewMode.workingChanges)
-                Text("Last commit").tag(GitReviewMode.lastCommit)
-            }
-            .pickerStyle(.segmented)
-            .frame(width: 310)
-            HStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("\(document.repositoryReviewMode == .lastCommit ? "Last commit" : "Working changes") on \(document.repository?.branch ?? "…")")
-                        .font(AppTypography.heading)
-                        .lineLimit(1).truncationMode(.middle)
-                    Text(document.repositoryReviewMode == .lastCommit ? document.repository?.commit.map { "\($0.shortID) · \($0.subject)" } ?? "No commit selected" : "Only files changed in your working tree")
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1).truncationMode(.tail)
-                        .help(document.repository?.commit?.subject ?? "Only files changed in your working tree")
-                }
-                Spacer(minLength: 0)
-                if document.repositoryReviewMode == .workingChanges {
-                    Picker("Compare against", selection: Binding(
-                        get: { document.repositoryBaselineRef },
-                        set: { document.selectRepositoryBaseline($0) }
-                    )) {
-                        Text(document.repository?.head == nil ? "Empty base" : "Last commit on \(document.repository?.branch ?? "HEAD")")
-                            .tag(nil as String?)
-                        Divider()
-                        ForEach(document.repository?.branches ?? []) { branch in
-                            Text(branch.name).tag(Optional(branch.id))
-                        }
-                    }
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: 360)
-                    .disabled(document.isScanningRepository || document.repository == nil)
-                    .help("Choose a baseline for all working changes. The file list stays the same.")
-                } else {
-                    Text(document.repositoryReviewDescription)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: 300, alignment: .trailing)
-                }
-            }
-            if document.repositoryReviewMode == .workingChanges, let notice = document.repositoryBaselineNotice {
-                Text(notice).foregroundStyle(.secondary)
-            }
+        HStack(spacing: 20) {
+            RepositoryCommitPicker(document: document)
+            Text(document.repository?.commit?.subject ?? "No commit selected")
+                .font(AppTypography.heading)
+                .lineLimit(1).truncationMode(.tail)
+                .help(document.repository?.commit?.subject ?? "")
+            Spacer(minLength: 0)
+            Label("Read-only", systemImage: "lock")
+                .foregroundStyle(.secondary)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .background(.bar)
@@ -144,21 +106,11 @@ struct ContentView: View {
                     } else if let message = document.repositoryMessage {
                         ContentUnavailableView("Unable to show comparison", systemImage: "doc.badge.ellipsis", description: Text(message))
                     } else if document.hasBothInputs {
-                        VStack(spacing: 0) {
-                            if let baseline = document.repositoryBaseline, document.selectedRepositoryFileIsIdentical {
-                                Label("This file matches \(baseline.name)", systemImage: "equal.circle")
-                                    .foregroundStyle(.secondary)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(12)
-                                Divider()
-                            }
-                            diffView
-                        }
+                        diffView
                     } else if document.isRepositoryMode {
                         ContentUnavailableView(
                             document.repositoryEmptyTitle,
-                            systemImage: document.repository?.changes.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass",
-                            description: Text(document.repositoryReviewDescription))
+                            systemImage: document.repository?.changes.isEmpty == true ? "checkmark.circle" : "doc.text.magnifyingglass")
                     } else {
                         welcome
                     }
@@ -183,9 +135,9 @@ struct ContentView: View {
                 Button { copy(onLeft: onLeft) } label: { Image(systemName: "doc.on.doc") }
                     .buttonStyle(.borderless)
                     .disabled(!document.hasBothInputs)
-                    .help(onLeft || document.repositoryReviewMode == .lastCommit ? "Copy committed text" : "Copy working-tree text")
+                    .help("Copy committed text")
             }
-            Text((onLeft && document.repositoryBaseline == nil ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
+            Text((onLeft ? document.selectedRepositoryChange?.originalPath : nil) ?? document.selectedRepositoryPath ?? "No file selected")
                 .font(AppTypography.heading)
                 .lineLimit(1).truncationMode(.middle)
                 .help(document.selectedRepositoryPath ?? "")
@@ -342,7 +294,7 @@ struct ContentView: View {
                 if document.isComparing {
                     ProgressView("Comparing…").padding(20).background(.regularMaterial, in: RoundedRectangle(cornerRadius: 10))
                 } else if document.rows.isEmpty {
-                    ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.selectedRepositoryFileIsIdentical ? "There is no text to display." : document.isRepositoryMode ? "A file may be absent or empty, or Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
+                    ContentUnavailableView("Both inputs are empty", systemImage: "equal.circle", description: Text(document.isRepositoryMode ? "A file may be absent or empty, or Git may be reporting a rename or a file mode change." : "Paste or edit either side to compare text."))
                 }
             }
     }
@@ -371,14 +323,11 @@ struct ContentView: View {
         if !document.hasLeft { return "Add the original text" }
         if !document.hasRight { return "Add the changed text" }
         if document.isComparing { return "Comparing…" }
-        if let baseline = document.repositoryBaseline, document.selectedRepositoryFileIsIdentical {
-            return "Identical to \(baseline.name)"
-        }
         if document.changeStarts.isEmpty {
-            if document.repositoryReviewMode == .lastCommit && !document.ignoreWhitespace {
+            if document.isRepositoryMode && !document.ignoreWhitespace {
                 return "No text differences · This commit may change a filename or permissions"
             }
-            return document.ignoreWhitespace ? "No differences ignoring spacing" : (document.isRepositoryMode ? "No text differences · Git status may reflect staging, a rename, or permissions" : "No differences")
+            return document.ignoreWhitespace ? "No differences ignoring spacing" : "No differences"
         }
         return "Change \((document.selectedChange ?? 0) + 1) of \(document.changeStarts.count)"
     }

@@ -26,6 +26,30 @@ To install the built app, quit MacDiff, then copy `dist/MacDiff.app` into `/Appl
 
 The build converts `icon/icon.png` into the macOS app icon, including standard and Retina sizes. To update the icon, replace that square PNG (at least 1024 × 1024 pixels) and rebuild the app bundle.
 
+## Signed and notarized releases
+
+Local builds use ad hoc signing. To distribute a download, install a **Developer ID Application** certificate and its private key in Keychain, and save notarization credentials once:
+
+```sh
+xcrun notarytool store-credentials "ClipDiff-Notary" \
+  --apple-id "YOUR_APPLE_ACCOUNT_EMAIL" --team-id "ZQ5KWSZ72K"
+```
+
+Enter an Apple-generated app-specific password when prompted. An existing profile for the same Apple team can be reused; do not put passwords or private keys in the repository.
+
+From a clean, committed checkout, run:
+
+```sh
+SIGNING_IDENTITY="Developer ID Application: Stuart Dunkeld (ZQ5KWSZ72K)" \
+NOTARY_PROFILE="ClipDiff-Notary" ./scripts/release.sh
+```
+
+The script runs tests, builds a universal Intel/Apple Silicon release in fresh scratch directories, signs with hardened runtime and a secure timestamp, and waits for Apple's notarization result. Only an `Accepted` result proceeds to stapling and Gatekeeper verification. It then creates a new ZIP, extracts that ZIP, and verifies its signature, ticket, and Gatekeeper acceptance again.
+
+Verified ZIPs, SHA-256 checksums, and Apple's submission result are saved in `dist/releases/`, named with the version from `Resources/Info.plist` and the source commit. Existing release ZIPs are never overwritten. On failure, the script retains its working directory and diagnostics under `dist/`; on success, temporary files are removed. It does not publish to GitHub or replace your installed app.
+
+Notarization needs network access and may take several minutes. If the 30-minute wait expires, inspect the retained submission ID with `xcrun notarytool info ID --keychain-profile "ClipDiff-Notary"` before deciding whether to retry. If Apple rejects a submission, retrieve details with `xcrun notarytool log ID --keychain-profile "ClipDiff-Notary"`.
+
 ## Use with ClipDiff
 
 In ClipDiff, choose **Diff viewer → Choose Application…** and select `dist/MacDiff.app` (or its `Contents/MacOS/MacDiff` executable).

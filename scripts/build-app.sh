@@ -21,11 +21,18 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 project_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-output_dir="$project_root/dist"
+output_dir="${MACDIFF_OUTPUT_DIR:-$project_root/dist}"
 app_path="$output_dir/MacDiff.app"
 
-swift build --package-path "$project_root" --configuration "$configuration" --product MacDiff
-binary_dir="$(swift build --package-path "$project_root" --configuration "$configuration" --show-bin-path)"
+build_args=(--package-path "$project_root" --configuration "$configuration")
+if [[ "${MACDIFF_UNIVERSAL:-0}" == "1" ]]; then
+    build_args+=(--arch arm64 --arch x86_64)
+fi
+if [[ -n "${MACDIFF_SCRATCH_PATH:-}" ]]; then
+    build_args+=(--scratch-path "$MACDIFF_SCRATCH_PATH")
+fi
+swift build "${build_args[@]}" --product MacDiff
+binary_dir="$(swift build "${build_args[@]}" --show-bin-path)"
 
 mkdir -p "$output_dir"
 staging_dir="$(mktemp -d "$output_dir/.macdiff-build.XXXXXX")"

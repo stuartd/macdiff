@@ -47,7 +47,11 @@ swift test --scratch-path "$work_dir/tests" 2>&1 | tee "$work_dir/tests.log"
 MACDIFF_UNIVERSAL=1 MACDIFF_SCRATCH_PATH="$work_dir/build" \
     MACDIFF_OUTPUT_DIR="$work_dir/app" ./scripts/build-app.sh release 2>&1 | tee "$work_dir/build.log"
 app="$work_dir/app/MacDiff.app"
-/usr/bin/lipo "$app/Contents/MacOS/MacDiff" -verify_arch arm64 x86_64
+architectures=" $(/usr/bin/lipo -archs "$app/Contents/MacOS/MacDiff") "
+if [[ "$architectures" != *" arm64 "* || "$architectures" != *" x86_64 "* ]]; then
+    echo "Universal build is missing an architecture:$architectures" >&2
+    exit 1
+fi
 
 # Fail if source changed while tests/builds ran.
 if [[ "$(git rev-parse HEAD)" != "$commit" || -n "$(git status --porcelain --untracked-files=normal)" ]]; then

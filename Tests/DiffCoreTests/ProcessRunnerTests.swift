@@ -67,12 +67,23 @@ private func child(_ script: String) -> Process {
     #expect(!process.isRunning)
 }
 
-@Test func processDeadlineStopsASilentChild() async {
-    let process = child("trap '' TERM; exec /bin/sleep 60")
-    let start = ContinuousClock.now
-    await #expect(throws: ProcessRunner.RunnerError.self) {
+@Test func processDeadlineStopsASilentChild() async throws {
+    let ready = FileManager.default.temporaryDirectory.appendingPathComponent("macdiff-deadline-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: ready) }
+    let process = child("trap '' TERM; printf ready > '\(ready.path)'; exec /bin/sleep 60")
+    let worker = Task {
         try await ProcessRunner.run(process, outputLimit: 1024, limitMessage: "Too large", timeout: 0.05)
     }
+    defer { worker.cancel() }
+    let launchDeadline = ContinuousClock.now + .seconds(10)
+    while !FileManager.default.fileExists(atPath: ready.path) {
+        guard ContinuousClock.now < launchDeadline else { throw ProcessRunner.RunnerError("Child failed to start") }
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    // The command deadline begins after launch, excluding cold Process/AppKit
+    // startup and test-executor scheduling before the child has started.
+    let start = ContinuousClock.now
+    await #expect(throws: ProcessRunner.RunnerError.self) { try await worker.value }
     #expect(start.duration(to: .now) < .seconds(2))
     #expect(!process.isRunning)
 }

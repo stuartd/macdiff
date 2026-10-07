@@ -22,9 +22,10 @@ jobs:
     runs-on: macos-14
     timeout-minutes: 20
     env:
+      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
       MACDIFF_RUN_PERFORMANCE_TESTS: ${{ inputs.run_performance && '1' || '0' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Toolchain
         run: swift --version
       - name: Test core and macOS application behavior
@@ -49,7 +50,7 @@ jobs:
           ./scripts/build-app.sh debug 2>&1 | tee build.log
       - name: Retain validation logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: macos-validation
           path: |

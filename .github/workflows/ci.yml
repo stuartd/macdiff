@@ -31,7 +31,17 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          set +e
           swift test --jobs 3 2>&1 | tee tests.log
+          test_result=${PIPESTATUS[0]}
+          set -e
+          {
+            echo '### Swift test result'
+            echo '```text'
+            tail -n 160 tests.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$test_result"
       - name: Build and verify a development app bundle
         shell: bash
         run: |

@@ -20,7 +20,6 @@ final class DiffDocument: ObservableObject {
     @Published private(set) var addedCount = 0
     @Published private(set) var removedCount = 0
     @Published private(set) var modifiedCount = 0
-    @Published private(set) var longestLineCharacterCount = 0
     @Published var errorMessage: String?
     @Published var ignoreWhitespace = false {
         didSet {
@@ -45,8 +44,8 @@ final class DiffDocument: ObservableObject {
     var selectedRepositoryChange: GitChange? {
         repository?.changes.first { $0.path == selectedRepositoryPath }
     }
-    var repositoryBaselineLabel: String { "Before" }
-    var repositoryTargetLabel: String { "After" }
+    var repositoryBaselineLabel: String { repository?.commit?.baselineLabel ?? "Before" }
+    var repositoryTargetLabel: String { repository?.commit?.targetLabel ?? "After" }
     var repositoryEmptyTitle: String {
         if repository?.commit == nil { return "No commits yet" }
         return repository?.changes.isEmpty == true ? "This commit has no file changes" : "Select a committed file"
@@ -89,12 +88,12 @@ final class DiffDocument: ObservableObject {
         closeRepository()
         cancelLoad(onLeft: onLeft)
         if onLeft {
-            guard text != leftText || !hasLeft || leftURL != nil else { return }
+            guard !text.utf8.elementsEqual(leftText.utf8) || !hasLeft || leftURL != nil else { return }
             leftText = text
             leftURL = nil
             hasLeft = true
         } else {
-            guard text != rightText || !hasRight || rightURL != nil else { return }
+            guard !text.utf8.elementsEqual(rightText.utf8) || !hasRight || rightURL != nil else { return }
             rightText = text
             rightURL = nil
             hasRight = true
@@ -243,7 +242,7 @@ final class DiffDocument: ObservableObject {
         repositoryMessage = nil
         clearInputs()
         repositoryTask = Task { [weak self] in
-            let worker = Task.detached(priority: .userInitiated) { try GitRepository.scan(url, commitID: commitID) }
+            let worker = Task.detached(priority: .userInitiated) { try await GitRepository.scan(url, commitID: commitID) }
             do {
                 let snapshot = try await withTaskCancellationHandler {
                     try await worker.value
@@ -285,7 +284,7 @@ final class DiffDocument: ObservableObject {
         isLoadingRepositoryFile = true
         repositoryFileTask = Task { [weak self] in
             let worker = Task.detached(priority: .userInitiated) {
-                try GitRepository.comparison(for: change, in: repository)
+                try await GitRepository.comparison(for: change, in: repository)
             }
             do {
                 let pair = try await withTaskCancellationHandler {
@@ -343,7 +342,6 @@ final class DiffDocument: ObservableObject {
         addedCount = 0
         removedCount = 0
         modifiedCount = 0
-        longestLineCharacterCount = 0
         isComparing = hasBothInputs
         guard hasBothInputs else { return }
 
@@ -365,7 +363,6 @@ final class DiffDocument: ObservableObject {
             self.addedCount = result.addedCount
             self.removedCount = result.removedCount
             self.modifiedCount = result.modifiedCount
-            self.longestLineCharacterCount = result.longestLineCharacterCount
             self.selectedChange = result.changeStarts.isEmpty ? nil : 0
             self.isComparing = false
             self.comparisonTask = nil
@@ -428,7 +425,6 @@ private struct Comparison: Sendable {
     var addedCount = 0
     var removedCount = 0
     var modifiedCount = 0
-    var longestLineCharacterCount = 0
 
     init(rows: [DiffRow]) {
         self.rows = rows
@@ -443,10 +439,6 @@ private struct Comparison: Sendable {
             case .removed: removedCount += 1
             case .modified: modifiedCount += 1
             case .unchanged: break
-            }
-            for text in [row.oldText, row.newText].compactMap({ $0 }) {
-                let width = text.reduce(into: 0) { $0 += TextFileReader.displayColumns(for: $1) }
-                longestLineCharacterCount = max(longestLineCharacterCount, width)
             }
         }
     }

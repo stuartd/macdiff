@@ -44,7 +44,7 @@ func selectAllPreservesEmptyLinesTabsUnicodeAndFinalNewlines(source: String) {
     #expect(!pane.isEditable)
     #expect(pane.isSelectable)
 
-    for width: CGFloat in [800, 540, 1100] {
+    for width: CGFloat in [800, 540, 1100, 800] {
         canvas.arrange(width: width, minimumHeight: 300)
         #expect(pane.selectedRange() == selection)
         for index in rows.indices {
@@ -56,6 +56,43 @@ func selectAllPreservesEmptyLinesTabsUnicodeAndFinalNewlines(source: String) {
                 #expect(abs(actualY - expectedY) < 1, "Row \(index) at width \(width): \(actualY) != \(expectedY)")
             }
         }
+    }
+}
+
+@Test @MainActor func replacingEquivalentUnicodeRefreshesSelectionSource() {
+    let view = DiffScrollView()
+    view.frame = NSRect(x: 0, y: 0, width: 800, height: 300)
+    for source in ["caf\u{e9}", "cafe\u{301}", "caf\u{e9}"] {
+        view.update(rows: DiffEngine.compare(source, source), leftText: source, rightText: source,
+                    fontSize: 15, selectedRowID: nil)
+        view.layoutSubtreeIfNeeded()
+        for pane in [view.diffContent.leftPane, view.diffContent.rightPane] {
+            let range = NSRange(location: 0, length: pane.string.utf16.count)
+            #expect(Array(pane.content.copiedText(in: range).utf8) == Array(source.utf8))
+        }
+    }
+}
+
+@Test(arguments: ["a\u{0c}b\nlast", "a\u{2028}b\nlast", "a\u{2029}b\nlast"])
+@MainActor func textKitSeparatorsPreserveSelectionAndRowAlignment(source: String) throws {
+    try TextFileReader.validate(source)
+    let canvas = DiffCanvasView()
+    canvas.configure(rows: DiffEngine.compare(source, "other\nlast"), leftText: source,
+                     rightText: "other\nlast", fontSize: 15, resetSelection: true)
+    for width: CGFloat in [800, 400, 800] {
+        canvas.arrange(width: width, minimumHeight: 300)
+        #expect(canvas.leftPane.rowRects == canvas.rightPane.rowRects)
+        for pane in [canvas.leftPane, canvas.rightPane] {
+            let manager = try #require(pane.layoutManager)
+            for index in pane.content.rowRanges.indices {
+                let glyph = manager.glyphIndexForCharacter(at: pane.content.rowRanges[index].location)
+                let actualY = manager.lineFragmentRect(forGlyphAt: glyph, effectiveRange: nil).minY
+                #expect(abs(actualY - pane.rowRects[index].minY) < 1)
+            }
+        }
+        let pane = canvas.leftPane
+        #expect(Array(pane.content.copiedText(in: NSRange(location: 0, length: pane.string.utf16.count)).utf8)
+            == Array(source.utf8))
     }
 }
 

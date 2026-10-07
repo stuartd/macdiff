@@ -56,15 +56,18 @@ public enum DiffEngine {
 
         // Intern the comparison text once: repeated lines and long lines then cost the
         // same amount to compare during alignment. Keep the original strings for display.
-        var symbols: [String: Int] = [:]
+        // String equality treats canonically equivalent Unicode as equal. Byte
+        // keys keep normalization-only edits visible while retaining source text.
+        var symbols: [Data: Int] = [:]
         func tokens(for lines: [String]) -> [Int]? {
             var result: [Int] = []
             result.reserveCapacity(lines.count)
             for (index, line) in lines.enumerated() {
                 if index.isMultiple(of: 1024), Task.isCancelled { return nil }
-                let key = ignoringWhitespace
+                let comparisonText = ignoringWhitespace
                     ? line.split(whereSeparator: \Character.isWhitespace).joined(separator: " ")
                     : line
+                let key = Data(comparisonText.utf8)
                 if let symbol = symbols[key] {
                     result.append(symbol)
                 } else {

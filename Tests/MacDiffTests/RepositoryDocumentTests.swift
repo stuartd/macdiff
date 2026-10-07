@@ -149,7 +149,7 @@ private func makeDocumentRepository() throws -> URL {
     try documentGit(root, "commit", "-m", "First")
     document.refreshRepository()
     try await waitForRepository(document)
-    #expect(document.repositoryBaselineLabel == "Before")
+    #expect(document.repositoryBaselineLabel == "Before · Empty tree")
     #expect(document.leftText.isEmpty && document.rightText == "one")
     try documentGit(root, "commit", "--allow-empty", "-m", "Empty")
     document.refreshRepository()

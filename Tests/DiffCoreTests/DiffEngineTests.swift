@@ -1,6 +1,20 @@
 import Testing
 @testable import DiffCore
 
+@Test func normalizationOnlyEditsRemainVisibleAndPreserveBytes() {
+    let original = "caf\u{e9}"
+    let changed = "cafe\u{301}"
+    for ignoringWhitespace in [false, true] {
+        let rows = DiffEngine.compare(original, changed, ignoringWhitespace: ignoringWhitespace)
+        #expect(rows.count == 1)
+        #expect(rows.first?.kind == .modified)
+        #expect(Array(rows.first?.oldText?.utf8 ?? "".utf8) == Array(original.utf8))
+        #expect(Array(rows.first?.newText?.utf8 ?? "".utf8) == Array(changed.utf8))
+        #expect(rows.first?.oldHighlights == [3..<4])
+        #expect(rows.first?.newHighlights == [3..<4])
+    }
+}
+
 @Test func identicalFiles() {
     let rows = DiffEngine.compare("one\ntwo", "one\ntwo")
     #expect(rows.count == 2)

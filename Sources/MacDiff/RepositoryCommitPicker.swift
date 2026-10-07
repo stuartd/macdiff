@@ -122,7 +122,7 @@ private struct CommitHistoryPicker: View {
                 let query = query
                 let limit = limit
                 let worker = Task.detached(priority: .userInitiated) {
-                    try GitRepository.history(in: repository, query: query, limit: limit + 1)
+                    try await GitRepository.history(in: repository, query: query, limit: limit + 1)
                 }
                 let results = try await withTaskCancellationHandler {
                     try await worker.value

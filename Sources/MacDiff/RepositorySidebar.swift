@@ -30,10 +30,15 @@ extension DiffDocument {
 struct RepositorySidebar: View {
     @ObservedObject var document: DiffDocument
     @State private var filter = ""
+    @State private var changes: [GitChange] = []
+    @State private var tree: [PathNode] = []
     @AppStorage("repositoryTreeView") private var showsTree = false
 
-    private var changes: [GitChange] {
-        (document.repository?.changes ?? []).filter { filter.isEmpty || $0.path.localizedCaseInsensitiveContains(filter) }
+    private func refreshPaths() {
+        changes = (document.repository?.changes ?? []).filter {
+            filter.isEmpty || $0.path.localizedCaseInsensitiveContains(filter)
+        }
+        tree = PathNode.tree(changes)
     }
     private var selection: Binding<String?> {
         Binding(get: { document.selectedRepositoryPath }, set: { document.selectRepositoryPath($0) })
@@ -64,7 +69,7 @@ struct RepositorySidebar: View {
             Divider()
             List(selection: selection) {
                 if showsTree {
-                    OutlineGroup(PathNode.tree(changes), children: \.children) { node in
+                    OutlineGroup(tree, children: \.children) { node in
                         if let change = node.change {
                             changeRow(change, showParent: false).tag(change.path)
                         } else {
@@ -100,8 +105,11 @@ struct RepositorySidebar: View {
         }
         .font(AppTypography.body)
         .background(.bar)
-        .onChange(of: document.repositoryURL) { _, _ in filter = "" }
-        .onChange(of: document.repository?.commit?.id) { _, _ in filter = "" }
+        .onAppear(perform: refreshPaths)
+        .onChange(of: filter) { _, _ in refreshPaths() }
+        .onChange(of: document.repository?.changes) { _, _ in refreshPaths() }
+        .onChange(of: document.repositoryURL) { _, _ in filter = ""; refreshPaths() }
+        .onChange(of: document.repository?.commit?.id) { _, _ in filter = ""; refreshPaths() }
     }
 
     private func changeRow(_ change: GitChange, showParent: Bool) -> some View {
@@ -127,25 +135,33 @@ struct RepositorySidebar: View {
     }
 }
 
-private struct PathNode: Identifiable {
+struct PathNode: Identifiable {
     let id: String
     let name: String
     var change: GitChange?
     var children: [PathNode]?
-    var fileCount: Int { change == nil ? (children ?? []).reduce(0) { $0 + $1.fileCount } : 1 }
+    let fileCount: Int
 
-    static func tree(_ changes: [GitChange], depth: Int = 0) -> [PathNode] {
-        let groups = Dictionary(grouping: changes) { change in
-            (change.path as NSString).pathComponents[depth]
-        }
+    private struct Entry {
+        let change: GitChange
+        let components: [String]
+    }
+
+    static func tree(_ changes: [GitChange]) -> [PathNode] {
+        tree(changes.map { Entry(change: $0, components: ($0.path as NSString).pathComponents) }, depth: 0)
+    }
+
+    private static func tree(_ entries: [Entry], depth: Int) -> [PathNode] {
+        let groups = Dictionary(grouping: entries) { $0.components[depth] }
         return groups.map { name, entries in
-            let components = (entries[0].path as NSString).pathComponents
-            let path = components.prefix(depth + 1).joined(separator: "/")
-            let file = entries.first { $0.path == path }
-            let descendants = entries.filter { $0.path != path }
-            return PathNode(id: path, name: name, change: file,
-                            children: descendants.isEmpty ? nil : tree(descendants, depth: depth + 1))
-        }.sorted {
+            let path = entries[0].components.prefix(depth + 1).joined(separator: "/")
+            let file = entries.first { $0.components.count == depth + 1 }?.change
+            let descendants = entries.filter { $0.components.count > depth + 1 }
+            let children = descendants.isEmpty ? nil : tree(descendants, depth: depth + 1)
+            let count = (file == nil ? 0 : 1) + (children ?? []).reduce(0) { $0 + $1.fileCount }
+            return PathNode(id: path, name: name, change: file, children: children, fileCount: count)
+        }
+        .sorted {
             if ($0.children != nil) != ($1.children != nil) { return $0.children != nil }
             return $0.name.localizedStandardCompare($1.name) == .orderedAscending
         }

@@ -45,7 +45,8 @@ final class DiffScrollView: NSScrollView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func update(rows: [DiffRow], leftText: String, rightText: String, fontSize: CGFloat, selectedRowID: Int?) {
-        let changed = self.rows != rows || self.leftText != leftText || self.rightText != rightText
+        let changed = self.rows != rows || !self.leftText.utf8.elementsEqual(leftText.utf8)
+            || !self.rightText.utf8.elementsEqual(rightText.utf8)
         if changed || self.fontSize != fontSize {
             self.rows = rows
             self.leftText = leftText
@@ -143,6 +144,9 @@ final class DiffPaneTextView: NSTextView {
     private var rows: [DiffRow] = []
     private var codeFont = NSFont.monospacedSystemFont(ofSize: 15, weight: .regular)
     private var paragraphStyle = NSMutableParagraphStyle()
+    private var measurements: [(width: CGFloat, heights: [CGFloat])] = []
+    private var alignedHeights: [CGFloat] = []
+    private var alignedNaturalHeights: [CGFloat] = []
     private(set) var rowRects: [NSRect] = []
     var selectedRowID: Int? { didSet { if oldValue != selectedRowID { needsDisplay = true } } }
     private var numberWidth: CGFloat { max(52, codeFont.pointSize * 3.9) }
@@ -180,6 +184,10 @@ final class DiffPaneTextView: NSTextView {
     func configure(rows: [DiffRow], source: String, fontSize: CGFloat, resetSelection: Bool) {
         let selection = selectedRanges
         self.rows = rows
+        measurements = []
+        alignedHeights = []
+        alignedNaturalHeights = []
+        rowRects = []
         content = DiffTextContent(rows: rows, source: source, onLeft: onLeft)
         codeFont = .monospacedSystemFont(ofSize: fontSize, weight: .regular)
         paragraphStyle = NSMutableParagraphStyle()
@@ -202,25 +210,46 @@ final class DiffPaneTextView: NSTextView {
     func measureRows(width: CGFloat) -> [CGFloat] {
         guard let storage = textStorage, let manager = layoutManager, let container = textContainer else { return [] }
         container.containerSize = NSSize(width: max(1, width - gutterWidth - 8), height: .greatestFiniteMagnitude)
+        if let cached = measurements.first(where: { $0.width == width }) { return cached.heights }
+        alignedHeights = []
+        alignedNaturalHeights = []
         storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: storage.length))
         manager.ensureLayout(for: container)
-        return content.rowRanges.map { range in
+        let heights = content.rowRanges.map { range in
             let glyphs = manager.glyphRange(forCharacterRange: range, actualCharacterRange: nil)
             let first = manager.lineFragmentRect(forGlyphAt: glyphs.location, effectiveRange: nil)
             let last = manager.lineFragmentRect(forGlyphAt: NSMaxRange(glyphs) - 1, effectiveRange: nil)
             return ceil(last.maxY - first.minY)
         }
+        measurements.append((width, heights))
+        // Bound retained measurements while reusing widths during live resizing.
+        if measurements.count > 3 { measurements.removeFirst() }
+        return heights
     }
 
     func alignRows(heights: [CGFloat], naturalHeights: [CGFloat]) {
         guard let storage = textStorage else { return }
+        if heights == alignedHeights && naturalHeights == alignedNaturalHeights {
+            if let container = textContainer { layoutManager?.ensureLayout(for: container) }
+            needsDisplay = true
+            return
+        }
+        alignedHeights = heights
+        alignedNaturalHeights = naturalHeights
         var y: CGFloat = 0
         rowRects = []
         storage.beginEditing()
         for index in heights.indices {
             let style = paragraphStyle.mutableCopy() as! NSMutableParagraphStyle
             style.paragraphSpacing = heights[index] - naturalHeights[index]
-            storage.addAttribute(.paragraphStyle, value: style, range: content.rowRanges[index])
+            let range = content.rowRanges[index]
+            storage.addAttribute(.paragraphStyle, value: paragraphStyle, range: range)
+            // A source row may contain U+2029 paragraphs. Add the alignment gap
+            // once, after its final paragraph, rather than after every paragraph.
+            let lastParagraph = (content.text as NSString).paragraphRange(
+                for: NSRange(location: NSMaxRange(range) - 1, length: 0))
+            storage.addAttribute(.paragraphStyle, value: style,
+                                 range: NSIntersectionRange(range, lastParagraph))
             rowRects.append(NSRect(x: 0, y: y, width: 0, height: heights[index]))
             y += heights[index]
         }

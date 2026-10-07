@@ -37,7 +37,8 @@ enum InlineDiff {
         let wordWeights = oldTokens.map { token in
             token.value.allSatisfy(\.isWhitespace) ? 1 : max(2, token.value.count)
         }
-        let wordMatches = matches(oldTokens.map(\.value), newTokens.map(\.value), weights: wordWeights, work: &lineWork)
+        let wordMatches = matches(oldTokens.map { Array($0.value.utf8) }, newTokens.map { Array($0.value.utf8) },
+                                  weights: wordWeights, work: &lineWork)
         var result = Highlights()
         var oldStart = 0
         var newStart = 0
@@ -47,7 +48,8 @@ enum InlineDiff {
             let newEnd = newIndex < newTokens.count ? newTokens[newIndex].units.lowerBound : rhs.count
             let oldBlock = Array(lhs[oldStart..<oldEnd])
             let newBlock = Array(rhs[newStart..<newEnd])
-            let characterMatches = matches(oldBlock.map(\.value), newBlock.map(\.value), work: &lineWork)
+            let characterMatches = matches(oldBlock.map { Array(String($0.value).utf8) },
+                                           newBlock.map { Array(String($0.value).utf8) }, work: &lineWork)
             var oldCursor = 0
             var newCursor = 0
             for (i, j) in characterMatches + [(oldBlock.count, newBlock.count)] {

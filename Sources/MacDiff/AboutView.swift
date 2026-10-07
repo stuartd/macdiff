@@ -36,7 +36,7 @@ struct AboutView: View {
                 }
                 GridRow {
                     Text("Repository").foregroundStyle(.secondary)
-                    Link("stuartd/MacClipboardDiff", destination: URL(string: "https://github.com/stuartd/MacClipboardDiff")!)
+                    Link("stuartd/macdiff", destination: URL(string: "https://github.com/stuartd/macdiff")!)
                 }
             }
             .font(.system(size: 14))

@@ -153,7 +153,6 @@ private func waitForDocument(_ document: DiffDocument) async throws {
     document.setText("a\tb", onLeft: false)
     try await waitForDocument(document)
     #expect(document.addedCount == 1)
-    #expect(document.longestLineCharacterCount == 6)
     document.swap()
     try await waitForDocument(document)
     #expect(document.hasBothInputs)
@@ -166,13 +165,12 @@ private func waitForDocument(_ document: DiffDocument) async throws {
     #expect(document.rows.isEmpty)
 }
 
-@Test @MainActor func measuresUnicodeLinesWithoutTruncation() async throws {
+@Test @MainActor func preservesLongUnicodeLinesWithoutTruncation() async throws {
     let document = DiffDocument()
     let text = String(repeating: "界🌍", count: 1_000) + "\ta"
     document.setText(text, onLeft: true)
     document.setText(text, onLeft: false)
     try await waitForDocument(document)
-    #expect(document.longestLineCharacterCount == 4_005)
     #expect(document.rows.first?.oldText == text)
     #expect(document.changeStarts.isEmpty)
 }
@@ -301,5 +299,24 @@ private func waitForDocument(_ document: DiffDocument) async throws {
     #expect(document.leftText == "corrected")
     try document.updateText("", onLeft: true)
     #expect(document.hasLeft && document.leftText.isEmpty)
+}
+@Test @MainActor func editsAndReloadsPreserveExactUnicodeInput() async throws {
+    let document = DiffDocument()
+    document.setText("caf\u{e9}", onLeft: true)
+    document.setText("caf\u{e9}", onLeft: false)
+    try await waitForDocument(document)
+    try document.updateText("cafe\u{301}", onLeft: true)
+    try await waitForDocument(document)
+    #expect(Array(document.leftText.utf8) == Array("cafe\u{301}".utf8))
+    #expect(document.modifiedCount == 1)
+
+    let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: url) }
+    for source in ["caf\u{e9}", "cafe\u{301}"] {
+        try Data(source.utf8).write(to: url)
+        document.load(url, onLeft: false)
+        try await waitForDocument(document)
+        #expect(Array(document.rightText.utf8) == Array(source.utf8))
+    }
 }
 #endif

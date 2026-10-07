@@ -123,6 +123,8 @@ Within-line highlighting also has a bounded work budget. Difficult spans may rec
 
 LF, CRLF, and CR line endings compare equivalently. A final line break appears as a final empty row, so adding or removing the final newline is still visible. Original text is retained for copying.
 
+Unicode normalization differences remain visible: composed and decomposed spellings compare by their exact UTF-8 representation, including when **Ignore Spacing** is enabled. Copying preserves the accepted source representation.
+
 Files support strict UTF-8 (with or without a byte-order mark) and UTF-16 with a byte-order mark. Unsupported encodings, binary files, and oversized inputs produce an error without replacing the previous input. Each input is limited to 5 MiB, 100,000 lines, and 100,000 display columns per line to keep the viewer responsive.
 
 Inputs stay in memory and are discarded when the app exits. MacDiff reads the clipboard only when you press Paste and writes to it only when you press Copy. Only appearance, text-size, and repository list/tree preferences are saved.
@@ -134,3 +136,15 @@ swift test
 ```
 
 Tests cover comparison correctness and cancellation, large inputs, line endings, file decoding and limits, launch arguments, asynchronous document state/navigation, and repository review against temporary Git repositories (including renames, unusual paths, worktrees, and unchanged index contents).
+
+Git reads are asynchronous, have a 30-second command deadline, and terminate promptly when superseded. Diagnostics retain at most 16 KiB of stderr while draining the entire stream.
+
+GitHub Actions builds and tests on macOS, including the AppKit/document tests, and verifies a locally signed development bundle. Linux runs the portable core tests; it cannot validate the native UI.
+
+For separate measurements of input validation, initial layout, resizing, and font changes at the input limits, use a Mac:
+
+```sh
+MACDIFF_RUN_PERFORMANCE_TESTS=1 swift test --filter measureLargeInputValidationAndTextLayout
+```
+
+The same measurements can be enabled through the workflow's **Run workflow** option. They report timings without imposing a hardware-independent performance threshold. See [the review follow-up](docs/reviews/2026-10-07-follow-up.md) for the remaining manual macOS checks.

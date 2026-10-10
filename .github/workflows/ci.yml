@@ -52,7 +52,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: macos-validation
+          name: macos-validation-macdiff
           path: |
             tests.log
             build.log

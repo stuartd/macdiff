@@ -26,7 +26,72 @@ To install the built app, quit MacDiff, then copy `dist/MacDiff.app` into `/Appl
 
 The build converts `icon/icon.png` into the macOS app icon, including standard and Retina sizes. To update the icon, replace that square PNG (at least 1024 × 1024 pixels) and rebuild the app bundle.
 
-## Signed and notarized releases
+## GitHub releases
+
+Push a tag starting with `v` to build and publish a notarized GitHub Release:
+
+```sh
+git tag v1.0
+git push origin v1.0
+```
+
+The **Build Release** workflow runs the tests and uses `scripts/release.sh` to
+build a universal Intel/Apple Silicon app, sign it with Developer ID, notarize
+it, staple the ticket, and verify the final ZIP after extracting it. Only a
+successful verified build reaches the publishing job. The release contains
+the ZIP and its SHA-256 checksum, with generated release notes. Missing secrets,
+failed notarization, or failed verification prevent publication.
+
+Use a tag matching `CFBundleShortVersionString` in `Resources/Info.plist`, with
+an optional prerelease suffix (for example, `v1.0-rc.1`). Tags containing a
+hyphen create GitHub prereleases. The bundle version still comes from the
+plist; the tag does not rewrite it. About continues to show the source commit
+and build timestamp. Rerunning a successful tag build updates its release assets.
+
+For a manual test without Apple credentials, choose **Actions → Build Release →
+Run workflow** on a branch. The resulting **MacDiff-macOS** artifact contains an
+ad hoc signed universal build; it is not notarized and does not create a GitHub
+Release. Run the workflow on a `v*` tag to use the notarized release path.
+
+### One-time Actions secrets
+
+Add these repository secrets in [MacDiff Actions secrets](https://github.com/stuartd/macdiff/settings/secrets/actions)
+before pushing a release tag:
+
+| Secret | Value |
+| --- | --- |
+| `BUILD_CERTIFICATE_BASE64` | Base64-encoded `.p12` export of one **Developer ID Application** certificate and its private key. |
+| `P12_PASSWORD` | Password chosen when exporting that `.p12`. |
+| `APPLE_ID` | Apple Account email used for notarization. |
+| `APPLE_TEAM_ID` | Apple Developer team ID (currently `ZQ5KWSZ72K`). |
+| `APPLE_APP_SPECIFIC_PASSWORD` | App-specific password generated at [account.apple.com](https://account.apple.com/). |
+
+The certificate and Apple account used for ClipDiff can be reused. Repository
+secrets are separate: add them to MacDiff too, or grant MacDiff access to the
+corresponding organization secrets. A local `notarytool` Keychain profile does
+not transfer to a GitHub runner. An **Apple Development** certificate is not
+suitable; export the **Developer ID Application** identity, including its private
+key, from **My Certificates** in Keychain Access.
+
+For example, upload the certificate directly without printing or copying it to
+the clipboard, then enter the remaining values at the CLI prompts:
+
+```sh
+base64 -i /path/to/DeveloperID.p12 | gh secret set BUILD_CERTIFICATE_BASE64 --repo stuartd/macdiff
+gh secret set P12_PASSWORD --repo stuartd/macdiff
+gh secret set APPLE_ID --repo stuartd/macdiff
+gh secret set APPLE_TEAM_ID --repo stuartd/macdiff
+gh secret set APPLE_APP_SPECIFIC_PASSWORD --repo stuartd/macdiff
+```
+
+The workflow imports the certificate into a temporary Keychain, validates the
+notarization credentials before building, and removes the Keychain at the end
+of the job, including on failure. Submission results and available failure logs
+are retained as a **MacDiff-notarization** workflow artifact. Publishing uses
+GitHub's built-in token; no personal access token is needed. Never commit a
+certificate, private key, password, or secret value.
+
+## Local signed and notarized releases
 
 Local builds use ad hoc signing. To distribute a download, install a **Developer ID Application** certificate and its private key in Keychain, and save notarization credentials once:
 

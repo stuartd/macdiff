@@ -32,6 +32,11 @@ with open(os.environ["TOOL_LOG"], "a") as log:
     log.write(json.dumps([program, *arguments]) + "\\n")
 if " ".join([program, *arguments[:1]]) == os.environ.get("FAIL_COMMAND"):
     sys.exit(1)
+if program == "security" and arguments[0] == "import":
+    # macOS base64 can accept input rejected by GNU base64. The real Keychain
+    # import must still reject bytes that are not a valid exported identity.
+    if Path(arguments[1]).read_bytes() != b"synthetic p12 fixture":
+        sys.exit(1)
 if program == "security" and arguments[0] == "find-identity":
     print(os.environ["FAKE_IDENTITIES"])
 '''
@@ -121,10 +126,10 @@ class ReleaseCredentialTests(unittest.TestCase):
         self.assertFalse((self.root / "macdiff-signing.p12").exists())
         self.assertFalse(self.environment_file.exists())
 
-    def test_invalid_base64_fails_before_import(self):
+    def test_malformed_certificate_exports_no_identity(self):
         result = self.run_setup(BUILD_CERTIFICATE_BASE64="invalid!")
         self.assertNotEqual(result.returncode, 0)
-        self.assertFalse(self.log.exists())
+        self.assertFalse(self.environment_file.exists())
         self.assertFalse((self.root / "macdiff-signing.p12").exists())
 
 

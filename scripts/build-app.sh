@@ -25,14 +25,26 @@ output_dir="${MACDIFF_OUTPUT_DIR:-$project_root/dist}"
 app_path="$output_dir/MacDiff.app"
 
 build_args=(--package-path "$project_root" --configuration "$configuration")
+binary_paths=()
 if [[ "${MACDIFF_UNIVERSAL:-0}" == "1" ]]; then
-    build_args+=(--arch arm64 --arch x86_64)
+    # Swift 6.0 switches multi-architecture builds to the Xcode backend, which
+    # cannot resolve BuildMetadataPlugin. Build each slice with SwiftPM first.
+    scratch_root="${MACDIFF_SCRATCH_PATH:-$project_root/.build}"
+    for architecture in arm64 x86_64; do
+        architecture_args=("${build_args[@]}" --arch "$architecture"
+            --scratch-path "$scratch_root/universal/$architecture")
+        swift build "${architecture_args[@]}" --product MacDiff
+        binary_dir="$(swift build "${architecture_args[@]}" --show-bin-path)"
+        binary_paths+=("$binary_dir/MacDiff")
+    done
+else
+    if [[ -n "${MACDIFF_SCRATCH_PATH:-}" ]]; then
+        build_args+=(--scratch-path "$MACDIFF_SCRATCH_PATH")
+    fi
+    swift build "${build_args[@]}" --product MacDiff
+    binary_dir="$(swift build "${build_args[@]}" --show-bin-path)"
+    binary_paths+=("$binary_dir/MacDiff")
 fi
-if [[ -n "${MACDIFF_SCRATCH_PATH:-}" ]]; then
-    build_args+=(--scratch-path "$MACDIFF_SCRATCH_PATH")
-fi
-swift build "${build_args[@]}" --product MacDiff
-binary_dir="$(swift build "${build_args[@]}" --show-bin-path)"
 
 mkdir -p "$output_dir"
 staging_dir="$(mktemp -d "$output_dir/.macdiff-build.XXXXXX")"
@@ -40,7 +52,14 @@ trap 'rm -rf "$staging_dir"' EXIT
 staged_app="$staging_dir/MacDiff.app"
 mkdir -p "$staged_app/Contents/MacOS" "$staged_app/Contents/Resources"
 
-cp "$binary_dir/MacDiff" "$staged_app/Contents/MacOS/MacDiff"
+if [[ "${MACDIFF_UNIVERSAL:-0}" == "1" ]]; then
+    /usr/bin/lipo -create "${binary_paths[@]}" -output "$staged_app/Contents/MacOS/MacDiff"
+    for architecture in arm64 x86_64; do
+        /usr/bin/lipo "$staged_app/Contents/MacOS/MacDiff" -verify_arch "$architecture"
+    done
+else
+    cp "${binary_paths[0]}" "$staged_app/Contents/MacOS/MacDiff"
+fi
 cp "$project_root/Resources/Info.plist" "$staged_app/Contents/Info.plist"
 chmod +x "$staged_app/Contents/MacOS/MacDiff"
 /usr/bin/plutil -lint "$staged_app/Contents/Info.plist"

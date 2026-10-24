@@ -45,11 +45,11 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$test_result"
-      - name: Build and verify a development app bundle
+      - name: Build and verify a universal development app bundle
         shell: bash
         run: |
           set -o pipefail
-          ./scripts/build-app.sh debug 2>&1 | tee build.log
+          MACDIFF_UNIVERSAL=1 ./scripts/build-app.sh debug 2>&1 | tee build.log
       - name: Retain validation logs
         if: always()
         uses: actions/upload-artifact@v6

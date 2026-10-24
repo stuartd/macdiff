@@ -20,6 +20,8 @@ open dist/MacDiff.app
 
 The script builds a release app for the current Mac’s architecture and signs it for local use. Pass `debug` for a debug build. The bundle is intended for local development; it is not notarized for distribution.
 
+Use `MACDIFF_UNIVERSAL=1 ./scripts/build-app.sh` for an Intel/Apple Silicon bundle. The script builds each architecture separately and combines the executables with `lipo`, preserving build metadata generation on Swift 6.0, whose multi-architecture build backend cannot resolve the package plugin.
+
 **MacDiff → About MacDiff** shows the short Git commit hash and build date and time (UTC). A Swift package build plugin generates these constants before compilation, so `swift build`, `swift run`, Xcode package builds, and CI builds all include them without relying on the app packaging script. The values travel with the executable. The hash comes from the checked-out commit, with `GITHUB_SHA` as a fallback for source archives in GitHub Actions; without either, it shows “Unavailable”. The timestamp records this build invocation, not the commit date or launch time.
 
 To install the built app, quit MacDiff, then copy `dist/MacDiff.app` into `/Applications` using Finder, replacing the previous copy if present. Select the installed app in ClipDiff so future comparisons use that copy.
@@ -204,7 +206,7 @@ Tests cover comparison correctness and cancellation, large inputs, line endings,
 
 Git reads are asynchronous, have a 30-second command deadline, and terminate promptly when superseded. Diagnostics retain at most 16 KiB of stderr while draining the entire stream.
 
-GitHub Actions builds and tests on macOS, including the AppKit/document tests, and verifies a locally signed development bundle. Linux runs the portable core tests; it cannot validate the native UI.
+GitHub Actions builds and tests on macOS, including the AppKit/document tests, and verifies both architectures and the signature of a universal development bundle. Linux runs the portable core tests; it cannot validate the native UI.
 
 For separate measurements of input validation, initial layout, resizing, and font changes at the input limits, use a Mac:
 

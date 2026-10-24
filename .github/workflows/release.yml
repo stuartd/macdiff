@@ -1,0 +1,133 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build MacDiff for macOS
+    if: github.event.deleted != true
+    runs-on: macos-14
+    timeout-minutes: 75
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_16.2.app/Contents/Developer
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Toolchain
+        run: swift --version
+
+      - name: Install release signing and notarization credentials
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: bash scripts/setup-release-keychain.sh
+
+      - name: Test, build, sign, and notarize tagged release
+        if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: ./scripts/release.sh
+
+      - name: Test and package branch build
+        if: github.ref_type != 'tag' || !startsWith(github.ref_name, 'v')
+        run: |
+          swift test --jobs 3
+          MACDIFF_UNIVERSAL=1 ./scripts/build-app.sh release
+          APP_PATH=dist/MacDiff.app
+          for ARCH in arm64 x86_64; do
+            lipo "$APP_PATH/Contents/MacOS/MacDiff" -verify_arch "$ARCH"
+          done
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          mkdir -p dist/releases
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" dist/releases/MacDiff-macOS.zip
+          (cd dist/releases && shasum -a 256 MacDiff-macOS.zip > MacDiff-macOS.zip.sha256)
+
+      - name: Upload release app
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacDiff-macOS
+          path: |
+            dist/releases/*.zip
+            dist/releases/*.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload notarization diagnostics
+        if: always() && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        uses: actions/upload-artifact@v4
+        with:
+          name: MacDiff-notarization
+          include-hidden-files: true
+          path: |
+            dist/releases/*-notarization.json
+            dist/.release.*/submission.json
+            dist/.release.*/notarization-log.json
+            dist/.release.*/tests.log
+            dist/.release.*/build.log
+          if-no-files-found: ignore
+          retention-days: 30
+
+      - name: Remove release credentials
+        if: always() && github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/macdiff-signing.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi
+          rm -f "$RUNNER_TEMP/macdiff-signing.p12"
+
+  publish:
+    name: Publish GitHub Release
+    needs: build
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - name: Download verified release app
+        uses: actions/download-artifact@v4
+        with:
+          name: MacDiff-macOS
+          path: release
+
+      - name: Publish app on GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          ASSETS=(release/*.zip release/*.zip.sha256)
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release upload "$RELEASE_TAG" "${ASSETS[@]}" --clobber
+          else
+            RELEASE_FLAGS=()
+            if [[ "$RELEASE_TAG" == *-* ]]; then
+              RELEASE_FLAGS+=(--prerelease)
+            fi
+            gh release create "$RELEASE_TAG" "${ASSETS[@]}" \
+              --verify-tag \
+              --title "MacDiff $RELEASE_TAG" \
+              --generate-notes \
+              "${RELEASE_FLAGS[@]}"
+          fi

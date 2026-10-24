@@ -30,13 +30,33 @@ if [[ -e "$final_zip" ]]; then
     exit 1
 fi
 
-# Check Keychain access before spending time building. No credential values are printed.
-identities="$(security find-identity -v -p codesigning)"
-if ! printf '%s\n' "$identities" | grep -F 'Developer ID Application:' | grep -Fq -- "$SIGNING_IDENTITY"; then
-    echo "Developer ID signing identity not found: $SIGNING_IDENTITY" >&2
-    exit 1
+# An isolated CI Keychain is optional; local releases keep using the user's Keychain.
+identity_args=(-v -p codesigning)
+notary_args=(--keychain-profile "$NOTARY_PROFILE")
+signing_args=(--options runtime --timestamp)
+if [[ -n "${SIGNING_KEYCHAIN:-}" ]]; then
+    identity_args+=("$SIGNING_KEYCHAIN")
+    notary_args+=(--keychain "$SIGNING_KEYCHAIN")
+    signing_args+=(--keychain "$SIGNING_KEYCHAIN")
 fi
-xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" --output-format json >/dev/null
+
+# Check Keychain access before spending time building. Match exactly one
+# Developer ID Application identity, by its full name or SHA-1.
+identities="$(security find-identity "${identity_args[@]}")"
+identity_hash="$(printf '%s\n' "$identities" | awk -v identity="$SIGNING_IDENTITY" '
+    /"Developer ID Application:/ {
+        hash = $2
+        name = $0
+        sub(/^[^"]*"/, "", name)
+        sub(/"[[:space:]]*$/, "", name)
+        if (hash == identity || name == identity) { print hash; count++ }
+    }
+    END { if (count != 1) exit 1 }
+')" || {
+    echo "Expected exactly one valid Developer ID Application identity matching SIGNING_IDENTITY." >&2
+    exit 1
+}
+xcrun notarytool history "${notary_args[@]}" --output-format json >/dev/null
 
 mkdir -p "$release_dir"
 work_dir="$(mktemp -d "$project_root/dist/.release.XXXXXX")"
@@ -58,25 +78,26 @@ if [[ "$(git rev-parse HEAD)" != "$commit" || -n "$(git status --porcelain --unt
     echo "Source changed during the release build; start again from committed source." >&2
     exit 1
 fi
-/usr/bin/codesign --force --sign "$SIGNING_IDENTITY" --options runtime --timestamp "$app"
+/usr/bin/codesign --force --sign "$identity_hash" "${signing_args[@]}" "$app"
 /usr/bin/codesign --verify --deep --strict --verbose=2 "$app"
 
 upload_zip="$work_dir/notarization.zip"
 /usr/bin/ditto -c -k --sequesterRsrc --keepParent "$app" "$upload_zip"
 # Capture JSON even on failure so Apple's status and submission ID can be inspected.
-if ! xcrun notarytool submit "$upload_zip" --keychain-profile "$NOTARY_PROFILE" \
-    --wait --timeout 30m --output-format json > "$work_dir/submission.json"; then
-    cat "$work_dir/submission.json"
-    echo "Notarization did not complete successfully. Inspect the retained submission result." >&2
-    exit 1
-fi
+submit_result=0
+xcrun notarytool submit "$upload_zip" "${notary_args[@]}" \
+    --wait --timeout 30m --output-format json > "$work_dir/submission.json" || submit_result=$?
 cat "$work_dir/submission.json"
-status="$(/usr/bin/plutil -extract status raw -o - "$work_dir/submission.json")"
-submission_id="$(/usr/bin/plutil -extract id raw -o - "$work_dir/submission.json")"
-if [[ "$status" != "Accepted" ]]; then
-    xcrun notarytool log "$submission_id" --keychain-profile "$NOTARY_PROFILE" \
+# Apple may return a nonzero exit status for rejection or a processing timeout.
+# Retrieve available diagnostics before checking the final result.
+submission_id="$(/usr/bin/plutil -extract id raw -o - "$work_dir/submission.json" 2>/dev/null || true)"
+if [[ -n "$submission_id" ]]; then
+    xcrun notarytool log "$submission_id" "${notary_args[@]}" \
         "$work_dir/notarization-log.json" || true
-    echo "Apple returned $status; no release ZIP was produced." >&2
+fi
+status="$(/usr/bin/plutil -extract status raw -o - "$work_dir/submission.json" 2>/dev/null || true)"
+if [[ "$submit_result" != 0 || "$status" != "Accepted" ]]; then
+    echo "Notarization did not complete with Accepted status; no release ZIP was produced." >&2
     exit 1
 fi
 

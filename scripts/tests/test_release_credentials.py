@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -19,7 +20,7 @@ SECRETS = {
     "APPLE_TEAM_ID": "EXAMPLETEAM",
     "APPLE_APP_SPECIFIC_PASSWORD": "synthetic-notary-password",
 }
-FAKE_TOOL = '''#!/usr/bin/env python3
+FAKE_TOOL = f'#!{sys.executable}\n' + '''
 import json
 import os
 from pathlib import Path
@@ -128,4 +129,10 @@ class ReleaseCredentialTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    run = unittest.main(exit=False)
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        for test, traceback in run.result.failures + run.result.errors:
+            message = f"{test}: {traceback}"
+            message = message.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error file=scripts/tests/test_release_credentials.py::{message}")
+    sys.exit(not run.result.wasSuccessful())

@@ -35,7 +35,9 @@ private func child(_ script: String) -> Process {
             try await ProcessRunner.run(process, outputLimit: 1024, limitMessage: "Too large", timeout: 3)
         }
         defer { worker.cancel() }
-        let launchDeadline = ContinuousClock.now + .seconds(2)
+        // Allow cold Process/AppKit startup and CI scheduling before measuring
+        // cancellation, matching the deadline test's startup allowance.
+        let launchDeadline = ContinuousClock.now + .seconds(10)
         while !FileManager.default.fileExists(atPath: ready.path) {
             guard ContinuousClock.now < launchDeadline else { throw ProcessRunner.RunnerError("Child failed to start") }
             try await Task.sleep(for: .milliseconds(10))

@@ -4,9 +4,10 @@ import SwiftUI
 
 struct AboutView: View {
     @AppStorage("appearance") private var appearance = "system"
+    let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 18) {
             VStack(spacing: 10) {
                 Image(nsImage: NSApplication.shared.applicationIconImage)
                     .resizable()
@@ -16,23 +17,18 @@ struct AboutView: View {
                     .font(.system(size: 26, weight: .semibold))
             }
 
-            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 10) {
+            VStack(spacing: 4) {
+                Text("© Stuart Dunkeld \(BuildMetadata.date.prefix(4))")
+                Text("Rose Hill Solutions")
+            }
+            .font(.system(size: 14))
+            .foregroundStyle(.secondary)
+
+            Grid(alignment: .leading, horizontalSpacing: 14, verticalSpacing: 8) {
                 GridRow {
-                    Text("Developer").foregroundStyle(.secondary)
-                    Text("Stuart Dunkeld")
-                }
-                GridRow {
-                    Text("Company").foregroundStyle(.secondary)
-                    Text("Rose Hill Solutions")
-                }
-                GridRow {
-                    Text("Commit").foregroundStyle(.secondary)
-                    Text(BuildMetadata.commit)
-                }
-                .padding(.top, 8)
-                GridRow {
-                    Text("Built").foregroundStyle(.secondary)
-                    Text(BuildMetadata.date)
+                    Text(BuildMetadata.releaseTag.isEmpty ? "Commit" : "Version")
+                        .foregroundStyle(.secondary)
+                    Text(BuildMetadata.releaseTag.isEmpty ? BuildMetadata.commit : BuildMetadata.releaseTag)
                 }
                 GridRow {
                     Text("Repository").foregroundStyle(.secondary)
@@ -42,14 +38,17 @@ struct AboutView: View {
             .font(.system(size: 14))
             .textSelection(.enabled)
 
-            Text("© \(BuildMetadata.date.prefix(4)) Stuart Dunkeld")
-                .font(.system(size: 14))
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .center)
+            Button(action: onClose) {
+                Text("OK")
+                    .frame(minWidth: 56)
+            }
+            .controlSize(.large)
+            .keyboardShortcut(.defaultAction)
         }
         .padding(24)
-        .frame(width: 364, height: 364)
+        .frame(width: 380)
         .preferredColorScheme(appearance == "dark" ? .dark : appearance == "light" ? .light : nil)
+        .onExitCommand(perform: onClose)
     }
 }
 #endif

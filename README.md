@@ -22,7 +22,9 @@ The script builds a release app for the current Mac’s architecture and signs i
 
 Use `MACDIFF_UNIVERSAL=1 ./scripts/build-app.sh` for an Intel/Apple Silicon bundle. The script builds each architecture separately and combines the executables with `lipo`, preserving build metadata generation on Swift 6.0, whose multi-architecture build backend cannot resolve the package plugin.
 
-**MacDiff → About MacDiff** shows the short Git commit hash and build date and time (UTC). A Swift package build plugin generates these constants before compilation, so `swift build`, `swift run`, Xcode package builds, and CI builds all include them without relying on the app packaging script. The values travel with the executable. The hash comes from the checked-out commit, with `GITHUB_SHA` as a fallback for source archives in GitHub Actions; without either, it shows “Unavailable”. The timestamp records this build invocation, not the commit date or launch time.
+**MacDiff → About MacDiff** shows the release tag for tagged releases (for example, **Version v1.0**) and the short Git commit hash for local and branch builds. Copyright and company details appear beneath the app name, followed by the version or commit and repository link. Choose **OK**, press Return, or press Escape to close the panel.
+
+A Swift package build plugin embeds the commit, optional release tag, and UTC build timestamp in the executable, so `swift build`, `swift run`, Xcode package builds, and CI builds all include them without relying on the app packaging script. The hash comes from the checked-out commit, with `GITHUB_SHA` as a fallback for source archives in GitHub Actions; without either, About shows “Unavailable”. The release workflow supplies `MACDIFF_RELEASE_TAG`; local builds omit it by default. The timestamp supplies the copyright year and is no longer displayed as a separate row.
 
 To install the built app, quit MacDiff, then copy `dist/MacDiff.app` into `/Applications` using Finder, replacing the previous copy if present. Select the installed app in ClipDiff so future comparisons use that copy.
 
@@ -47,8 +49,8 @@ failed notarization, or failed verification prevent publication.
 Use a tag matching `CFBundleShortVersionString` in `Resources/Info.plist`, with
 an optional prerelease suffix (for example, `v1.0-rc.1`). Tags containing a
 hyphen create GitHub prereleases. The bundle version still comes from the
-plist; the tag does not rewrite it. About continues to show the source commit
-and build timestamp. Rerunning a successful tag build updates its release assets.
+plist; the tag does not rewrite it. About shows the release tag.
+Rerunning a successful tag build updates its release assets.
 
 For a manual test without Apple credentials, choose **Actions → Build Release →
 Run workflow** on a branch. The resulting **MacDiff-macOS** artifact contains an

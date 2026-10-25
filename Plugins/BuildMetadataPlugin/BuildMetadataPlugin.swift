@@ -5,7 +5,7 @@ import PackagePlugin
 struct BuildMetadataPlugin: BuildToolPlugin {
     func createBuildCommands(context: PluginContext, target: Target) throws -> [Command] {
         [.prebuildCommand(
-            displayName: "Record MacDiff build commit and timestamp",
+            displayName: "Record MacDiff build metadata",
             executable: URL(fileURLWithPath: "/bin/sh"),
             arguments: [
                 context.package.directoryURL.appending(path: "scripts/generate-build-info.sh").path,

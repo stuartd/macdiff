@@ -15,7 +15,7 @@ struct MacDiffApp: App {
         .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(replacing: .appInfo) {
-                Button("About MacDiff") { appDelegate.showAbout() }
+                Button("About MacDiff", action: AppAbout.show)
             }
             ComparisonCommands(document: appDelegate.document)
         }
@@ -26,28 +26,6 @@ struct MacDiffApp: App {
 final class AppDelegate: NSObject, NSApplicationDelegate, ObservableObject {
     let document = DiffDocument()
     private var shouldPresentComparison = false
-    private var aboutPanel: NSPanel?
-
-    func showAbout() {
-        if aboutPanel == nil {
-            let contentView = NSHostingView(rootView: AboutView { [weak self] in
-                self?.aboutPanel?.close()
-            })
-            let panel = NSPanel(
-                contentRect: NSRect(origin: .zero, size: contentView.fittingSize),
-                styleMask: [.titled, .closable],
-                backing: .buffered,
-                defer: false
-            )
-            panel.title = "About MacDiff"
-            panel.isReleasedWhenClosed = false
-            panel.contentView = contentView
-            panel.center()
-            aboutPanel = panel
-        }
-        aboutPanel?.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-    }
 
     func application(_ sender: NSApplication, open urls: [URL]) {
         guard urls.count == 2, urls.allSatisfy(\.isFileURL) else {

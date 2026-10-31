@@ -34,6 +34,9 @@ jobs:
       - name: Toolchain
         run: swift --version
 
+      - name: Test build metadata
+        run: python3 scripts/tests/test_build_metadata.py
+
       - name: Install release signing and notarization credentials
         if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
         env:

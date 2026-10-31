@@ -46,24 +46,35 @@ class BuildMetadataTests(unittest.TestCase):
 
     def test_local_build_uses_checkout_commit_and_records_build_time(self):
         metadata = self.metadata(GITHUB_SHA="a" * 40)
-        self.assertEqual(metadata["commit"], self.git("rev-parse", "--short", "HEAD")[:12])
+        self.assertEqual(metadata["commit"], self.git("rev-parse", "--short=8", "HEAD")[:8])
         self.assertEqual(metadata["releaseTag"], "")
+        self.assertEqual(metadata["version"], metadata["commit"])
+        self.assertRegex(metadata["commit"], r"^[0-9a-fA-F]{8}$")
         self.assertRegex(metadata["date"], r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} UTC$")
 
-    def test_tagged_release_preserves_the_full_tag(self):
-        for tag in ["v1.0", "v1.0-rc.1", "v1.0+build.2"]:
+    def test_tagged_release_shows_version_without_prefix_and_preserves_metadata(self):
+        for tag, version in [("v0.9.321", "0.9.321"), ("v1.0-rc.1", "1.0-rc.1"),
+                             ("v1.0+build.2", "1.0+build.2"), ("1.0", "1.0")]:
             with self.subTest(tag=tag):
-                self.assertEqual(self.metadata(MACDIFF_RELEASE_TAG=tag)["releaseTag"], tag)
+                metadata = self.metadata(MACDIFF_RELEASE_TAG=tag)
+                self.assertEqual(metadata["releaseTag"], tag)
+                self.assertEqual(metadata["version"], version)
 
     def test_rebuilding_without_release_tag_does_not_retain_it(self):
         self.metadata(MACDIFF_RELEASE_TAG="v1.0")
-        self.assertEqual(self.metadata()["releaseTag"], "")
+        metadata = self.metadata()
+        self.assertEqual(metadata["releaseTag"], "")
+        self.assertEqual(metadata["version"], metadata["commit"])
 
     def test_archive_build_uses_github_commit_or_unavailable(self):
         archive = self.root / "archive"
         archive.mkdir()
-        self.assertEqual(self.metadata(project=archive, GITHUB_SHA="b" * 40)["commit"], "b" * 12)
-        self.assertEqual(self.metadata(project=archive)["commit"], "Unavailable")
+        metadata = self.metadata(project=archive, GITHUB_SHA="b" * 40)
+        self.assertEqual(metadata["commit"], "b" * 8)
+        self.assertEqual(metadata["version"], "b" * 8)
+        metadata = self.metadata(project=archive)
+        self.assertEqual(metadata["commit"], "Unavailable")
+        self.assertEqual(metadata["version"], "Unavailable")
 
     def test_unsafe_values_are_not_embedded_in_swift_source(self):
         archive = self.root / "archive"
@@ -73,6 +84,7 @@ class BuildMetadataTests(unittest.TestCase):
                 metadata = self.metadata(project=archive, GITHUB_SHA=value, MACDIFF_RELEASE_TAG=value)
                 self.assertEqual(metadata["commit"], "Unavailable")
                 self.assertEqual(metadata["releaseTag"], "")
+                self.assertEqual(metadata["version"], "Unavailable")
 
 
 if __name__ == "__main__":

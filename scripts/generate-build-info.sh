@@ -5,14 +5,14 @@ project_root="$1"
 output_dir="$2"
 
 # Prefer the actual checkout (including a PR merge commit) over CI event metadata.
-commit="$(git -C "$project_root" rev-parse --short HEAD 2>/dev/null || true)"
+commit="$(git -C "$project_root" rev-parse --short=8 HEAD 2>/dev/null || true)"
 if [ -z "$commit" ]; then
     commit="${GITHUB_SHA:-}"
 fi
 # Only a hash may be embedded in the generated Swift source.
 case "$commit" in
     ''|*[!0-9a-fA-F]*) commit="Unavailable" ;;
-    *) commit="$(printf '%s' "$commit" | cut -c1-12)" ;;
+    *) commit="$(printf '%s' "$commit" | cut -c1-8)" ;;
 esac
 # Tagged release builds supply the tag explicitly; local builds show the commit.
 # Keep values safe to embed directly in a Swift string literal.
@@ -20,6 +20,10 @@ release_tag="${MACDIFF_RELEASE_TAG:-}"
 case "$release_tag" in
     *[!0-9A-Za-z._+-]*) release_tag="" ;;
 esac
+version="$commit"
+if [ -n "$release_tag" ]; then
+    version="${release_tag#v}"
+fi
 build_date="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
 mkdir -p "$output_dir"
@@ -28,6 +32,7 @@ cat > "$output_dir/BuildMetadata.swift" <<EOF
 enum BuildMetadata {
     static let commit = "$commit"
     static let releaseTag = "$release_tag"
+    static let version = "$version"
     static let date = "$build_date"
 }
 EOF

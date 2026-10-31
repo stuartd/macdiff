@@ -139,7 +139,7 @@ func selectAllPreservesEmptyLinesTabsUnicodeAndFinalNewlines(source: String) {
 }
 
 @Test func buildMetadataIsCompiledIntoTheExecutable() {
-    #expect(BuildMetadata.commit.range(of: "^[0-9a-fA-F]{7,12}$", options: .regularExpression) != nil || BuildMetadata.commit == "Unavailable")
+    #expect(BuildMetadata.commit.range(of: "^[0-9a-fA-F]{8}$", options: .regularExpression) != nil || BuildMetadata.commit == "Unavailable")
     let formatter = DateFormatter()
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.timeZone = TimeZone(secondsFromGMT: 0)

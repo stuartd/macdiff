@@ -22,7 +22,7 @@ The script builds a release app for the current Mac’s architecture and signs i
 
 Use `MACDIFF_UNIVERSAL=1 ./scripts/build-app.sh` for an Intel/Apple Silicon bundle. The script builds each architecture separately and combines the executables with `lipo`, preserving build metadata generation on Swift 6.0, whose multi-architecture build backend cannot resolve the package plugin.
 
-**MacDiff → About MacDiff** opens the standard macOS About window. It shows **version: 1.0** for a tagged release such as `v1.0`, and the eight-character Git commit for local and branch builds (for example, **version: 1a3445bd**), along with the copyright, company details, and linked repository name. Close it using the window’s close button.
+**MacDiff → About MacDiff** opens a native About window with the same text sizes and spacing as ClipDiff. It shows **version: 1.0** for a tagged release such as `v1.0`, and the eight-character Git commit for local and branch builds (for example, **version: 1a3445bd**), along with the copyright, company details, and linked repository name. Close it using the window’s close button.
 
 A Swift package build plugin embeds the commit, optional release tag, and UTC build timestamp in the executable, so `swift build`, `swift run`, Xcode package builds, and CI builds all include them without relying on the app packaging script. The hash comes from the checked-out commit, with `GITHUB_SHA` as a fallback for source archives in GitHub Actions; without either, About shows “Unavailable”. The release workflow supplies `MACDIFF_RELEASE_TAG`; local builds omit it by default. The timestamp supplies the copyright year and is no longer displayed as a separate row.
 

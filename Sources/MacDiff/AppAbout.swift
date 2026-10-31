@@ -50,7 +50,7 @@ private struct MacDiffAboutView: View {
             .foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
-                Text("version: \(BuildMetadata.version)")
+                Text("Version \(BuildMetadata.version)")
                 Link("macdiff", destination: URL(string: "https://github.com/stuartd/macdiff")!)
             }
             .font(.system(size: 14))

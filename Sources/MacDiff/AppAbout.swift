@@ -6,21 +6,34 @@ enum AppAbout {
     static func show() {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
-        let repositoryLink = NSAttributedString(
-            string: "macdiff",
+        paragraphStyle.paragraphSpacing = 4
+        let copyright = "© Stuart Dunkeld \(BuildMetadata.date.prefix(4))"
+        let details = NSMutableAttributedString(
+            string: "\(copyright)\nRose Hill Solutions\nversion: \(BuildMetadata.version)\nmacdiff",
             attributes: [
-                .link: URL(string: "https://github.com/stuartd/macdiff")!,
-                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .font: NSFont.systemFont(ofSize: 14),
+                .foregroundColor: NSColor.labelColor,
                 .paragraphStyle: paragraphStyle
             ]
+        )
+        let text = details.string as NSString
+        details.addAttribute(
+            .foregroundColor,
+            value: NSColor.secondaryLabelColor,
+            range: text.range(of: "\(copyright)\nRose Hill Solutions")
+        )
+        details.addAttribute(
+            .link,
+            value: URL(string: "https://github.com/stuartd/macdiff")!,
+            range: text.range(of: "macdiff", options: .backwards)
         )
 
         NSApplication.shared.orderFrontStandardAboutPanel(options: [
             .applicationName: "MacDiff",
-            .applicationVersion: "version: \(BuildMetadata.version)",
+            .applicationVersion: "",
             .version: "",
-            .credits: repositoryLink,
-            .init(rawValue: "Copyright"): "© Stuart Dunkeld \(BuildMetadata.date.prefix(4))\nRose Hill Solutions"
+            .credits: details,
+            .init(rawValue: "Copyright"): ""
         ])
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
